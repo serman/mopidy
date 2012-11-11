@@ -111,6 +111,17 @@ HTTP_SERVER_PORT = 6680
 #: Default: None
 HTTP_SERVER_STATIC_DIR = None
 
+
+#: Which directory Mopidy's HTTP server should serve at /.
+#:
+#: Change this to have Mopidy serve e.g. files for your JavaScript client.
+#: /api and /ws will continue to work as usual even if you change this setting.
+#:
+#: Used by :mod:`mopidy.frontends.http`.
+#:
+#: Default: None
+HTTP_SERVER_TEMPLATE_DIR = None
+
 #: Your `Last.fm <http://www.last.fm/>`_ username.
 #:
 #: Used by :mod:`mopidy.frontends.lastfm`.

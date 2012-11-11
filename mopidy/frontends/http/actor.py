@@ -10,6 +10,7 @@ try:
     import cherrypy
     from ws4py.messaging import TextMessage
     from ws4py.server.cherrypyserver import WebSocketPlugin, WebSocketTool
+    from jinja2 import Environment, FileSystemLoader
 except ImportError as import_error:
     raise exceptions.OptionalDependencyError(import_error)
 
@@ -41,18 +42,27 @@ class HttpFrontend(pykka.ThreadingActor, CoreListener):
         cherrypy.tools.websocket = WebSocketTool()
 
     def _create_app(self):
-        root = RootResource()
-        root.api = api.ApiResource(self.core)
-        root.ws = ws.WebSocketResource()
 
         if settings.HTTP_SERVER_STATIC_DIR:
             static_dir = settings.HTTP_SERVER_STATIC_DIR
         else:
-            static_dir = os.path.dirname(__file__)
-        logger.debug(u'HTTP server will serve "%s" at /', static_dir)
+            static_dir = os.path.dirname(__file__) +"/static"
+        logger.debug(u'HTTP server will serve "%s" at /static', static_dir)
+
+        if settings.HTTP_SERVER_TEMPLATE_DIR:
+            template_dir = settings.HTTP_SERVER_TEMPLATE_DIR
+        else:
+            template_dir = os.path.dirname(__file__) +"/templates"
+        logger.debug(u'HTTP server will serve templates at "%s" ', template_dir)
+
+        env = Environment(loader=FileSystemLoader(template_dir))
+        
+        root = RootResource(self.core,env)
+        root.api = api.ApiResource(self.core)
+        root.ws = ws.WebSocketResource()
 
         config = {
-            '/': {
+            '/static': {
                 'tools.staticdir.on': True,
                 'tools.staticdir.index': 'index.html',
                 'tools.staticdir.dir': static_dir,
@@ -69,8 +79,8 @@ class HttpFrontend(pykka.ThreadingActor, CoreListener):
         return cherrypy.tree.mount(root, '/', config)
 
     def _setup_logging(self, app):
-        cherrypy.log.access_log.setLevel(logging.NOTSET)
-        cherrypy.log.error_log.setLevel(logging.NOTSET)
+        cherrypy.log.access_log.setLevel(logging.DEBUG)
+        cherrypy.log.error_log.setLevel(logging.DEBUG)
         cherrypy.log.screen = False
 
         app.log.access_log.setLevel(logging.NOTSET)
@@ -91,6 +101,26 @@ class HttpFrontend(pykka.ThreadingActor, CoreListener):
             TextMessage('playback_state_changed: %s -> %s' % (
                 old_state, new_state)))
 
+    def playlist_changed(self):
+        #TODO
+        pass
+    
+    def options_changed(self):
+        #TODO
+        pass
+    
+    def volume_changed(self):
+        #TODO
+        pass
+
+
 
 class RootResource(object):
-    pass
+    def __init__(self, core,env):
+        self.core = core
+        self.env=env
+        
+    @cherrypy.expose
+    def index(self):
+        tmpl = self.env.get_template('mobile.html')
+        return tmpl.render(user='sss', target='World')
