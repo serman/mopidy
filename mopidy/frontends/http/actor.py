@@ -28,6 +28,7 @@ class HttpFrontend(pykka.ThreadingActor, CoreListener):
         self._setup_websocket_plugin()
         app = self._create_app()
         self._setup_logging(app)
+        self.core.playback.consume=False;
 
     def _setup_server(self):
         cherrypy.config.update({

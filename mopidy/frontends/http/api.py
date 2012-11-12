@@ -1,6 +1,8 @@
 from mopidy import exceptions
 import translator
 import logging
+from mopidy.frontends.http.exceptions import (
+ HttpNoExistError)
 try:
     import cherrypy
 except ImportError as import_error:
@@ -68,6 +70,30 @@ class PlayerResource(object):
             }
         }
 
+    @cherrypy.tools.json_out()
+    def POST(self,prop,value):
+        if prop=='state':
+            if value=="playing":
+                self.core.playback.play()
+            if value=="stopped":
+                self.core.playback.stop()
+            if value=="paused":
+                self.core.playback.pause()    
+
+                            
+        if prop=='consume':
+            self.core.playback.consume=value
+        if prop=='random' :
+            self.core.playback.random=value
+        if prop=='single' :
+            self.core.playback.single=value
+        if prop=='volume':
+            self.core.playback.volume=value
+        if prop=='repeat' :
+            self.core.playback.repeat=value            
+        if prop=='time_position':
+            self.core.playback.time_position=value
+
 
 class TrackListResource(object):
     exposed = True
@@ -93,14 +119,31 @@ class TrackListResource(object):
             'tracks': tracks,
         }
 
-    def POST(self, uri, songpos=0):
+    def PUT(self, uri, songpos=None):
         print "uri es " + uri
         track = self.core.library.lookup(uri).get()
-        print track
-        cp_track = self.core.current_playlist.add( track, at_position=songpos).get()
-        print cp_track
-        self.core.playback.play(cp_track).get()                    
+        if track is None:
+            raise HttpNoExistError(u'No such song', command=u'addid')
+        if songpos is None:
+            cp_track = self.core.current_playlist.add( track).get()
+        else:
+            cp_track = self.core.current_playlist.add( track, at_position=songpos).get()     
+        print cp_track        
+        #self.core.playback.play(cp_track).get()                    
         return {'Id': cp_track.cpid}           
+
+    def POST (self, cp_id, new_position):
+        try:
+            cp_id=int(cp_id)
+            new_position=int(new_position)
+        except ValueError:
+            raise HttpWrongParameterError
+                
+        trackToMove=self.core.current_playlist.get(cpid=cp_id).get()
+        if trackToMove is None:
+            raise HttpNoExistError(u'No such song', command=u'get(cpid)')
+        trackIndex=self.core.current_playlist.index(trackToMove).get()
+        self.core.current_playlist.move(trackIndex,trackIndex,new_position)
 
 class SearchResource(object):
     exposed = True
