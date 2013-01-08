@@ -132,7 +132,8 @@ class TrackListResource(object):
         #self.core.playback.play(cp_track).get()                    
         return {'Id': cp_track.cpid}           
 
-    def POST (self, cp_id, new_position):
+    @cherrypy.expose
+    def move (self, cp_id, new_position):
         try:
             cp_id=int(cp_id)
             new_position=int(new_position)
