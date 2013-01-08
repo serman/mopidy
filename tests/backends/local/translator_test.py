@@ -1,18 +1,20 @@
 # encoding: utf-8
 
+from __future__ import unicode_literals
+
 import os
 import tempfile
 
-from mopidy.utils.path import path_to_uri
 from mopidy.backends.local.translator import parse_m3u, parse_mpd_tag_cache
 from mopidy.models import Track, Artist, Album
+from mopidy.utils.path import path_to_uri
 
 from tests import unittest, path_to_data_dir
 
 data_dir = path_to_data_dir('')
 song1_path = path_to_data_dir('song1.mp3')
 song2_path = path_to_data_dir('song2.mp3')
-encoded_path = path_to_data_dir(u'æøå.mp3')
+encoded_path = path_to_data_dir('æøå.mp3')
 song1_uri = path_to_uri(song1_path)
 song2_uri = path_to_uri(song2_path)
 encoded_uri = path_to_uri(encoded_path)
@@ -97,8 +99,8 @@ expected_tracks = []
 def generate_track(path, ident):
     uri = path_to_uri(path_to_data_dir(path))
     track = Track(
-        name='trackname', artists=expected_artists, track_no=1,
-        album=expected_albums[0], length=4000, uri=uri)
+        uri=uri, name='trackname', artists=expected_artists,
+        album=expected_albums[0], track_no=1, date='2006', length=4000)
     expected_tracks.append(track)
 
 
@@ -124,8 +126,8 @@ class MPDTagCacheToTracksTest(unittest.TestCase):
             path_to_data_dir('simple_tag_cache'), path_to_data_dir(''))
         uri = path_to_uri(path_to_data_dir('song1.mp3'))
         track = Track(
-            name='trackname', artists=expected_artists, track_no=1,
-            album=expected_albums[0], length=4000, uri=uri)
+            uri=uri, name='trackname', artists=expected_artists, track_no=1,
+            album=expected_albums[0], date='2006', length=4000)
         self.assertEqual(set([track]), tracks)
 
     def test_advanced_cache(self):
@@ -138,10 +140,10 @@ class MPDTagCacheToTracksTest(unittest.TestCase):
             path_to_data_dir('utf8_tag_cache'), path_to_data_dir(''))
 
         uri = path_to_uri(path_to_data_dir('song1.mp3'))
-        artists = [Artist(name=u'æøå')]
-        album = Album(name=u'æøå', artists=artists)
+        artists = [Artist(name='æøå')]
+        album = Album(name='æøå', artists=artists)
         track = Track(
-            uri=uri, name=u'æøå', artists=artists, album=album, length=4000)
+            uri=uri, name='æøå', artists=artists, album=album, length=4000)
 
         self.assertEqual(track, list(tracks)[0])
 
@@ -180,6 +182,6 @@ class MPDTagCacheToTracksTest(unittest.TestCase):
         artist = Artist(name='albumartistname')
         album = expected_albums[0].copy(artists=[artist])
         track = Track(
-            name='trackname', artists=expected_artists, track_no=1,
-            album=album, length=4000, uri=uri)
+            uri=uri, name='trackname', artists=expected_artists, track_no=1,
+            album=album, date='2006', length=4000)
         self.assertEqual(track, list(tracks)[0])

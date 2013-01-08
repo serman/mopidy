@@ -5,13 +5,271 @@ Changes
 This change log is used to track all major changes to Mopidy.
 
 
-v0.9.0 (in development)
-=======================
+v0.12.0 (in development)
+========================
 
-**Multiple backends support**
+(in development)
+
+- Make Mopidy work on early Python 2.6 versions. (Fixes: :issue:`302`)
+
+  - ``optparse`` fails if the first argument to ``add_option`` is a unicode
+    string on Python < 2.6.2rc1.
+
+  - ``foo(**data)`` fails if the keys in ``data`` is unicode strings on Python
+    < 2.6.5rc1.
+
+**Audio sub-system**
+
+- Improve selection of mixer tracks for volume control. (Fixes: :issuse:`307`)
+
+- EOT (end of track) and EOS (end of stream) handling has finally been fixed.
+  Problem with the old code was that we simply used EOS for everything, and let
+  the EOS propagate for the end of each track. What this means is basically that
+  we would disrupt the pipeline at the end of every track. This work was
+  concluded in the pull request :issue:`231`. Changes and issues fixed by this
+  include:
+
+  - A new method ``change_track(track)`` for playback provider which is where
+    doing everything like setting the URI and starting to push data should be
+    done. The ``play(track)`` method and EOT track changing uses this new
+    method.
+
+  - We've started using the about to finish signal from playbin2 to ensure
+    gapless playback as part of our EOT cleanup. (Fixes: :issue:`160`)
+
+  - Mopidy now distinguishes between EOT and EOS properly. (Fixes: :issue:`222`)
+
+  - Since we no longer let EOS disrupt the pipeline streaming OGG via SHOUTcast
+    now works. (Fixes: :issue:`168`)
+
+**Spotify backend**
+
+- Let GStreamer handle time position tracking and seeks. (Fixes: :issue:`191`)
+
+**Local backend**
+
+- Make ``mopidy-scan`` support symlinks.
+
+**Stream backend**
+
+We've added a new backend for playing audio streams, the :mod:`stream backend
+<mopidy.backends.stream>`. It is activated by default.
+
+The stream backend supports the intersection of what your GStreamer
+installation supports and what protocols are included in the
+:attr:`mopidy.settings.STREAM_PROTOCOLS` settings.
+
+Current limitations:
+
+- No metadata about the current track in the stream is available.
+
+- Playlists are not parsed, so you can't play e.g. a M3U or PLS file which
+  contains stream URIs. You need to extract the stream URL from the playlist
+  yourself. See :issue:`303` for progress on this.
+
+
+v0.11.1 (2012-12-24)
+====================
+
+Spotify search was broken in 0.11.0 for users of Python 2.6. This release fixes
+it. If you're using Python 2.7, v0.11.0 and v0.11.1 should be equivalent.
+
+
+v0.11.0 (2012-12-24)
+====================
+
+In celebration of Mopidy's three year anniversary December 23, we're releasing
+Mopidy 0.11. This release brings several improvements, most notably better
+search which now includes matching artists and albums from Spotify in the
+search results.
+
+**Settings**
+
+- The settings validator now complains if a setting which expects a tuple of
+  values (e.g. :attr:`mopidy.settings.BACKENDS`,
+  :attr:`mopidy.settings.FRONTENDS`) has a non-iterable value. This typically
+  happens because the setting value contains a single value and one has
+  forgotten to add a comma after the string, making the value a tuple. (Fixes:
+  :issue:`278`)
+
+**Spotify backend**
+
+- Add :attr:`mopidy.settings.SPOTIFY_TIMEOUT` setting which allows you to
+  control how long we should wait before giving up on Spotify searches, etc.
+
+- Add support for looking up albums, artists, and playlists by URI in addition
+  to tracks. (Fixes: :issue:`67`)
+
+  As an example of how this can be used, you can try the the following MPD
+  commands which now all adds one or more tracks to your tracklist::
+
+      add "spotify:track:1mwt9hzaH7idmC5UCoOUkz"
+      add "spotify:album:3gpHG5MGwnipnap32lFYvI"
+      add "spotify:artist:5TgQ66WuWkoQ2xYxaSTnVP"
+      add "spotify:user:p3.no:playlist:0XX6tamRiqEgh3t6FPFEkw"
+
+- Increase max number of tracks returned by searches from 100 to 200, which
+  seems to be Spotify's current max limit.
+
+**Local backend**
+
+- Load track dates from tag cache.
+
+- Add support for searching by track date.
+
+**MPD frontend**
+
+- Add :attr:`mopidy.settings.MPD_SERVER_CONNECTION_TIMEOUT` setting which
+  controls how long an MPD client can stay inactive before the connection is
+  closed by the server.
+
+- Add support for the ``findadd`` command.
+
+- Updated to match the MPD 0.17 protocol (Fixes: :issue:`228`):
+
+  - Add support for ``seekcur`` command.
+
+  - Add support for ``config`` command.
+
+  - Add support for loading a range of tracks from a playlist to the ``load``
+    command.
+
+  - Add support for ``searchadd`` command.
+
+  - Add support for ``searchaddpl`` command.
+
+  - Add empty stubs for channel commands for client to client communication.
+
+- Add support for search by date.
+
+- Make ``seek`` and ``seekid`` not restart the current track before seeking in
+  it.
+
+- Include fake tracks representing albums and artists in the search results.
+  When these are added to the tracklist, they expand to either all tracks in
+  the album or all tracks by the artist. This makes it easy to play full albums
+  in proper order, which is a feature that have been frequently requested.
+  (Fixes: :issue:`67`, :issue:`148`)
+
+**Internal changes**
+
+*Models:*
+
+- Specified that :attr:`mopidy.models.Playlist.last_modified` should be in UTC.
+
+- Added :class:`mopidy.models.SearchResult` model to encapsulate search results
+  consisting of more than just tracks.
+
+*Core API:*
+
+- Change the following methods to return :class:`mopidy.models.SearchResult`
+  objects which can include both track results and other results:
+
+  - :meth:`mopidy.core.LibraryController.find_exact`
+  - :meth:`mopidy.core.LibraryController.search`
+
+- Change the following methods to accept either a dict with filters or kwargs.
+  Previously they only accepted kwargs, which made them impossible to use from
+  the Mopidy.js through JSON-RPC, which doesn't support kwargs.
+
+  - :meth:`mopidy.core.LibraryController.find_exact`
+  - :meth:`mopidy.core.LibraryController.search`
+  - :meth:`mopidy.core.PlaylistsController.filter`
+  - :meth:`mopidy.core.TracklistController.filter`
+  - :meth:`mopidy.core.TracklistController.remove`
+
+- Actually trigger the :meth:`mopidy.core.CoreListener.volume_changed` event.
+
+- Include the new volume level in the
+  :meth:`mopidy.core.CoreListener.volume_changed` event.
+
+- The ``track_playback_{paused,resumed,started,ended}`` events now include a
+  :class:`mopidy.models.TlTrack` instead of a :class:`mopidy.models.Track`.
+
+*Audio:*
+
+- Mixers with fewer than 100 volume levels could report another volume level
+  than what you just set due to the conversion between Mopidy's 0-100 range and
+  the mixer's range. Now Mopidy returns the recently set volume if the mixer
+  reports a volume level that matches the recently set volume, otherwise the
+  mixer's volume level is rescaled to the 1-100 range and returned.
+
+
+v0.10.0 (2012-12-12)
+====================
+
+We've added an HTTP frontend for those wanting to build web clients for Mopidy!
+
+**Dependencies**
+
+- pyspotify >= 1.9, < 1.11 is now required for Spotify support. In other words,
+  you're free to upgrade to pyspotify 1.10, but it isn't a requirement.
+
+**Documentation**
+
+- Added installation instructions for Fedora.
+
+**Spotify backend**
+
+- Save a lot of memory by reusing artist, album, and track models.
+
+- Make sure the playlist loading hack only runs once.
+
+**Local backend**
+
+- Change log level from error to warning on messages emitted when the tag cache
+  isn't found and a couple of similar cases.
+
+- Make ``mopidy-scan`` ignore invalid dates, e.g. dates in years outside the
+  range 1-9999.
+
+- Make ``mopidy-scan`` accept :option:`-q`/:option:`--quiet` and
+  :option:`-v`/:option:`--verbose` options to control the amount of logging
+  output when scanning.
+
+- The scanner can now handle files with other encodings than UTF-8. Rebuild
+  your tag cache with ``mopidy-scan`` to include tracks that may have been
+  ignored previously.
+
+**HTTP frontend**
+
+- Added new optional HTTP frontend which exposes Mopidy's core API through
+  JSON-RPC 2.0 messages over a WebSocket. See :ref:`http-frontend` for further
+  details.
+
+- Added a JavaScript library, Mopidy.js, to make it easier to develop web based
+  Mopidy clients using the new HTTP frontend.
+
+**Bug fixes**
+
+- :issue:`256`: Fix crash caused by non-ASCII characters in paths returned from
+  ``glib``. The bug can be worked around by overriding the settings that
+  includes offending ``$XDG_`` variables.
+
+
+v0.9.0 (2012-11-21)
+===================
 
 Support for using the local and Spotify backends simultaneously have for a very
 long time been our most requested feature. Finally, it's here!
+
+**Dependencies**
+
+- pyspotify >= 1.9, < 1.10 is now required for Spotify support.
+
+**Documentation**
+
+- New :ref:`installation` guides, organized by OS and distribution so that you
+  can follow one concise list of instructions instead of jumping around the
+  docs to look for instructions for each dependency.
+
+- Moved :ref:`raspberrypi-installation` howto from the wiki to the docs.
+
+- Updated :ref:`mpd-clients` overview.
+
+- Added :ref:`mpris-clients` and :ref:`upnp-clients` overview.
+
+**Multiple backends support**
 
 - Both the local backend and the Spotify backend are now turned on by default.
   The local backend is listed first in the :attr:`mopidy.settings.BACKENDS`
@@ -24,8 +282,85 @@ long time been our most requested feature. Finally, it's here!
   As always, see :mod:`mopidy.settings` for the full list of available
   settings.
 
+**Spotify backend**
+
+- The Spotify backend now includes release year and artist on albums.
+
+- :issue:`233`: The Spotify backend now returns the track if you search for the
+  Spotify track URI.
+
+- Added support for connecting to the Spotify service through an HTTP or SOCKS
+  proxy, which is supported by pyspotify >= 1.9.
+
+- Subscriptions to other Spotify user's "starred" playlists are ignored, as
+  they currently isn't fully supported by pyspotify.
+
+**Local backend**
+
+- :issue:`236`: The ``mopidy-scan`` command failed to include tags from ALAC
+  files (Apple lossless) because it didn't support multiple tag messages from
+  GStreamer per track it scanned.
+
+- Added support for search by filename to local backend.
+
+**MPD frontend**
+
+- :issue:`218`: The MPD commands ``listplaylist`` and ``listplaylistinfo`` now
+  accepts unquoted playlist names if they don't contain spaces.
+
+- :issue:`246`: The MPD command ``list album artist ""`` and similar
+  ``search``, ``find``, and ``list`` commands with empty filter values caused a
+  :exc:`LookupError`, but should have been ignored by the MPD server.
+
+- The MPD frontend no longer lowercases search queries. This broke e.g. search
+  by URI, where casing may be essential.
+
+- The MPD command ``plchanges`` always returned the entire playlist. It now
+  returns an empty response when the client has seen the latest version.
+
+- The MPD commands ``search`` and ``find`` now allows the key ``file``, which
+  is used by ncmpcpp instead of ``filename``.
+
+- The MPD commands ``search`` and ``find`` now allow search query values to be
+  empty strings.
+
+- The MPD command ``listplaylists`` will no longer return playlists without a
+  name. This could crash ncmpcpp.
+
+- The MPD command ``list`` will no longer return artist names, album names, or
+  dates that are blank.
+
+- The MPD command ``decoders`` will now return an empty response instead of a
+  "not implemented" error to make the ncmpcpp browse view work the first time
+  it is opened.
+
+**MPRIS frontend**
+
+- The MPRIS playlists interface is now supported by our MPRIS frontend. This
+  means that you now can select playlists to queue and play from the Ubuntu
+  Sound Menu.
+
+**Audio mixers**
+
+- Made the :mod:`NAD mixer <mopidy.audio.mixers.nad>` responsive to interrupts
+  during amplifier calibration. It will now quit immediately, while previously
+  it completed the calibration first, and then quit, which could take more than
+  15 seconds.
+
+**Developer support**
+
+- Added optional background thread for debugging deadlocks. When the feature is
+  enabled via the ``--debug-thread`` option or
+  :attr:`mopidy.settings.DEBUG_THREAD` setting a ``SIGUSR1`` signal will dump
+  the traceback for all running threads.
+
+- The settings validator will now allow any setting prefixed with ``CUSTOM_``
+  to exist in the settings file.
+
+**Internal changes**
+
 Internally, Mopidy have seen a lot of changes to pave the way for multiple
-backends:
+backends and the future HTTP frontend.
 
 - A new layer and actor, "core", has been added to our stack, inbetween the
   frontends and the backends. The responsibility of the core layer and actor is
@@ -36,12 +371,6 @@ backends:
   Frontends no longer know anything about the backends. They just use the
   :ref:`core-api`.
 
-- The base playback provider has been updated with sane default behavior
-  instead of empty functions. By default, the playback provider now lets
-  GStreamer keep track of the current track's time position. The local backend
-  simply uses the base playback provider without any changes. The same applies
-  to any future backend that just needs GStreamer to play an URI for it.
-
 - The dependency graph between the core controllers and the backend providers
   have been straightened out, so that we don't have any circular dependencies.
   The frontend, core, backend, and audio layers are now strictly separate. The
@@ -51,55 +380,113 @@ backends:
   broadcasting of events to listeners, through e.g.
   :class:`mopidy.core.CoreListener` and :class:`mopidy.audio.AudioListener`.
 
+  See :ref:`concepts` for more details and illustrations of all the relations.
+
 - All dependencies are now explicitly passed to the constructors of the
   frontends, core, and the backends. This makes testing each layer with
   dummy/mocked lower layers easier than with the old variant, where
   dependencies where looked up in Pykka's actor registry.
 
-- The stored playlists part of the core API has been revised to be more focused
-  around the playlist URI, and some redundant functionality has been removed:
+- All properties in the core API now got getters, and setters if setting them
+  is allowed. They are not explictly listed in the docs as they have the same
+  behavior as the documented properties, but they are available and may be
+  used. This is useful for the future HTTP frontend.
 
-  - :attr:`mopidy.core.StoredPlaylistsController.playlists` no longer supports
-    assignment to it. The `playlists` property on the backend layer still does,
-    and all functionality is maintained by assigning to the playlists
-    collections at the backend level.
-
-  - :meth:`mopidy.core.StoredPlaylistsController.delete` now accepts an URI,
-    and not a playlist object.
-
-  - :meth:`mopidy.core.StoredPlaylistsController.save` now returns the saved
-    playlist. The returned playlist may differ from the saved playlist, and
-    should thus be used instead of the playlist passed to ``save()``.
-
-  - :meth:`mopidy.core.StoredPlaylistsController.rename` has been removed,
-    since renaming can be done with ``save()``.
-
-**Changes**
-
-- Made the :mod:`NAD mixer <mopidy.audio.mixers.nad>` responsive to interrupts
-  during amplifier calibration. It will now quit immediately, while previously
-  it completed the calibration first, and then quit, which could take more than
-  15 seconds.
+*Models:*
 
 - Added :attr:`mopidy.models.Album.date` attribute. It has the same format as
   the existing :attr:`mopidy.models.Track.date`.
 
-- The Spotify backend now includes release year and artist on albums.
+- Added :class:`mopidy.models.ModelJSONEncoder` and
+  :func:`mopidy.models.model_json_decoder` for automatic JSON serialization and
+  deserialization of data structures which contains Mopidy models. This is
+  useful for the future HTTP frontend.
 
-- Added support for search by filename to local backend.
+*Library:*
 
-- Added optional background thread for debugging deadlocks. When the feature is
-  enabled via the ``--debug-thread`` option or
-  :attr:`mopidy.settings.DEBUG_THREAD` setting a ``SIGUSR1`` signal will dump
-  the traceback for all running threads.
+- :meth:`mopidy.core.LibraryController.find_exact` and
+  :meth:`mopidy.core.LibraryController.search` now returns plain lists of
+  tracks instead of playlist objects.
 
-**Bug fixes**
+- :meth:`mopidy.core.LibraryController.lookup` now returns a list of tracks
+  instead of a single track. This makes it possible to support lookup of
+  artist or album URIs which then can expand to a list of tracks.
 
-- :issue:`218`: The MPD commands ``listplaylist`` and ``listplaylistinfo`` now
-  accepts unquotes playlist names if they don't contain spaces.
+*Playback:*
 
-- The MPD command ``plchanges`` always returned the entire playlist. It now
-  returns an empty response when the client has seen the latest version.
+- The base playback provider has been updated with sane default behavior
+  instead of empty functions. By default, the playback provider now lets
+  GStreamer keep track of the current track's time position. The local backend
+  simply uses the base playback provider without any changes. Any future
+  backend that just feeds URIs to GStreamer to play can also use the base
+  playback provider without any changes.
+
+- Removed :attr:`mopidy.core.PlaybackController.track_at_previous`. Use
+  :attr:`mopidy.core.PlaybackController.tl_track_at_previous` instead.
+
+- Removed :attr:`mopidy.core.PlaybackController.track_at_next`. Use
+  :attr:`mopidy.core.PlaybackController.tl_track_at_next` instead.
+
+- Removed :attr:`mopidy.core.PlaybackController.track_at_eot`. Use
+  :attr:`mopidy.core.PlaybackController.tl_track_at_eot` instead.
+
+- Removed :attr:`mopidy.core.PlaybackController.current_tlid`. Use
+  :attr:`mopidy.core.PlaybackController.current_tl_track` instead.
+
+*Playlists:*
+
+The playlists part of the core API has been revised to be more focused around
+the playlist URI, and some redundant functionality has been removed:
+
+- Renamed "stored playlists" to "playlists" everywhere, including the core API
+  used by frontends.
+
+- :attr:`mopidy.core.PlaylistsController.playlists` no longer supports
+  assignment to it. The `playlists` property on the backend layer still does,
+  and all functionality is maintained by assigning to the playlists collections
+  at the backend level.
+
+- :meth:`mopidy.core.PlaylistsController.delete` now accepts an URI, and not a
+  playlist object.
+
+- :meth:`mopidy.core.PlaylistsController.save` now returns the saved playlist.
+  The returned playlist may differ from the saved playlist, and should thus be
+  used instead of the playlist passed to
+  :meth:`mopidy.core.PlaylistsController.save`.
+
+- :meth:`mopidy.core.PlaylistsController.rename` has been removed, since
+  renaming can be done with :meth:`mopidy.core.PlaylistsController.save`.
+
+- :meth:`mopidy.core.PlaylistsController.get` has been replaced by
+  :meth:`mopidy.core.PlaylistsController.filter`.
+
+- The event :meth:`mopidy.core.CoreListener.playlist_changed` has been changed
+  to include the playlist that was changed.
+
+*Tracklist:*
+
+- Renamed "current playlist" to "tracklist" everywhere, including the core API
+  used by frontends.
+
+- Removed :meth:`mopidy.core.TracklistController.append`. Use
+  :meth:`mopidy.core.TracklistController.add` instead, which is now capable of
+  adding multiple tracks.
+
+- :meth:`mopidy.core.TracklistController.get` has been replaced by
+  :meth:`mopidy.core.TracklistController.filter`.
+
+- :meth:`mopidy.core.TracklistController.remove` can now remove multiple
+  tracks, and returns the tracks it removed.
+
+- When the tracklist is changed, we now trigger the new
+  :meth:`mopidy.core.CoreListener.tracklist_changed` event. Previously we
+  triggered :meth:`mopidy.core.CoreListener.playlist_changed`, which is
+  intended for stored playlists, not the tracklist.
+
+*Towards Python 3 support:*
+
+- Make the entire code base use unicode strings by default, and only fall back
+  to bytestrings where it is required. Another step closer to Python 3.
 
 
 v0.8.1 (2012-10-30)

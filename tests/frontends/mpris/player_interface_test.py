@@ -1,3 +1,5 @@
+from __future__ import unicode_literals
+
 import sys
 
 import mock
@@ -58,7 +60,7 @@ class PlayerInterfaceTest(unittest.TestCase):
         result = self.mpris.Get(objects.PLAYER_IFACE, 'LoopStatus')
         self.assertEqual('Track', result)
 
-    def test_get_loop_status_is_playlist_when_looping_current_playlist(self):
+    def test_get_loop_status_is_playlist_when_looping_tracklist(self):
         self.core.playback.repeat = True
         self.core.playback.single = False
         result = self.mpris.Get(objects.PLAYER_IFACE, 'LoopStatus')
@@ -99,16 +101,14 @@ class PlayerInterfaceTest(unittest.TestCase):
 
     def test_set_rate_is_ignored_if_can_control_is_false(self):
         self.mpris.get_CanControl = lambda *_: False
-        self.core.current_playlist.append([
-            Track(uri='dummy:a'), Track(uri='dummy:b')])
+        self.core.tracklist.add([Track(uri='dummy:a'), Track(uri='dummy:b')])
         self.core.playback.play()
         self.assertEqual(self.core.playback.state.get(), PLAYING)
         self.mpris.Set(objects.PLAYER_IFACE, 'Rate', 0)
         self.assertEqual(self.core.playback.state.get(), PLAYING)
 
     def test_set_rate_to_zero_pauses_playback(self):
-        self.core.current_playlist.append([
-            Track(uri='dummy:a'), Track(uri='dummy:b')])
+        self.core.tracklist.add([Track(uri='dummy:a'), Track(uri='dummy:b')])
         self.core.playback.play()
         self.assertEqual(self.core.playback.state.get(), PLAYING)
         self.mpris.Set(objects.PLAYER_IFACE, 'Rate', 0)
@@ -147,38 +147,38 @@ class PlayerInterfaceTest(unittest.TestCase):
         self.assertIn('mpris:trackid', result.keys())
         self.assertEqual(result['mpris:trackid'], '')
 
-    def test_get_metadata_has_trackid_based_on_cpid(self):
-        self.core.current_playlist.append([Track(uri='dummy:a')])
+    def test_get_metadata_has_trackid_based_on_tlid(self):
+        self.core.tracklist.add([Track(uri='dummy:a')])
         self.core.playback.play()
-        (cpid, track) = self.core.playback.current_cp_track.get()
+        (tlid, track) = self.core.playback.current_tl_track.get()
         result = self.mpris.Get(objects.PLAYER_IFACE, 'Metadata')
         self.assertIn('mpris:trackid', result.keys())
         self.assertEqual(
-            result['mpris:trackid'], '/com/mopidy/track/%d' % cpid)
+            result['mpris:trackid'], '/com/mopidy/track/%d' % tlid)
 
     def test_get_metadata_has_track_length(self):
-        self.core.current_playlist.append([Track(uri='dummy:a', length=40000)])
+        self.core.tracklist.add([Track(uri='dummy:a', length=40000)])
         self.core.playback.play()
         result = self.mpris.Get(objects.PLAYER_IFACE, 'Metadata')
         self.assertIn('mpris:length', result.keys())
         self.assertEqual(result['mpris:length'], 40000000)
 
     def test_get_metadata_has_track_uri(self):
-        self.core.current_playlist.append([Track(uri='dummy:a')])
+        self.core.tracklist.add([Track(uri='dummy:a')])
         self.core.playback.play()
         result = self.mpris.Get(objects.PLAYER_IFACE, 'Metadata')
         self.assertIn('xesam:url', result.keys())
         self.assertEqual(result['xesam:url'], 'dummy:a')
 
     def test_get_metadata_has_track_title(self):
-        self.core.current_playlist.append([Track(name='a')])
+        self.core.tracklist.add([Track(name='a')])
         self.core.playback.play()
         result = self.mpris.Get(objects.PLAYER_IFACE, 'Metadata')
         self.assertIn('xesam:title', result.keys())
         self.assertEqual(result['xesam:title'], 'a')
 
     def test_get_metadata_has_track_artists(self):
-        self.core.current_playlist.append([Track(artists=[
+        self.core.tracklist.add([Track(artists=[
             Artist(name='a'), Artist(name='b'), Artist(name=None)])])
         self.core.playback.play()
         result = self.mpris.Get(objects.PLAYER_IFACE, 'Metadata')
@@ -186,14 +186,14 @@ class PlayerInterfaceTest(unittest.TestCase):
         self.assertEqual(result['xesam:artist'], ['a', 'b'])
 
     def test_get_metadata_has_track_album(self):
-        self.core.current_playlist.append([Track(album=Album(name='a'))])
+        self.core.tracklist.add([Track(album=Album(name='a'))])
         self.core.playback.play()
         result = self.mpris.Get(objects.PLAYER_IFACE, 'Metadata')
         self.assertIn('xesam:album', result.keys())
         self.assertEqual(result['xesam:album'], 'a')
 
     def test_get_metadata_has_track_album_artists(self):
-        self.core.current_playlist.append([Track(album=Album(artists=[
+        self.core.tracklist.add([Track(album=Album(artists=[
             Artist(name='a'), Artist(name='b'), Artist(name=None)]))])
         self.core.playback.play()
         result = self.mpris.Get(objects.PLAYER_IFACE, 'Metadata')
@@ -201,7 +201,7 @@ class PlayerInterfaceTest(unittest.TestCase):
         self.assertEqual(result['xesam:albumArtist'], ['a', 'b'])
 
     def test_get_metadata_has_track_number_in_album(self):
-        self.core.current_playlist.append([Track(track_no=7)])
+        self.core.tracklist.add([Track(track_no=7)])
         self.core.playback.play()
         result = self.mpris.Get(objects.PLAYER_IFACE, 'Metadata')
         self.assertIn('xesam:trackNumber', result.keys())
@@ -244,7 +244,7 @@ class PlayerInterfaceTest(unittest.TestCase):
         self.assertEqual(self.core.playback.volume.get(), 10)
 
     def test_get_position_returns_time_position_in_microseconds(self):
-        self.core.current_playlist.append([Track(uri='dummy:a', length=40000)])
+        self.core.tracklist.add([Track(uri='dummy:a', length=40000)])
         self.core.playback.play()
         self.core.playback.seek(10000)
         result_in_microseconds = self.mpris.Get(
@@ -268,15 +268,14 @@ class PlayerInterfaceTest(unittest.TestCase):
 
     def test_can_go_next_is_true_if_can_control_and_other_next_track(self):
         self.mpris.get_CanControl = lambda *_: True
-        self.core.current_playlist.append([
-            Track(uri='dummy:a'), Track(uri='dummy:b')])
+        self.core.tracklist.add([Track(uri='dummy:a'), Track(uri='dummy:b')])
         self.core.playback.play()
         result = self.mpris.Get(objects.PLAYER_IFACE, 'CanGoNext')
         self.assertTrue(result)
 
     def test_can_go_next_is_false_if_next_track_is_the_same(self):
         self.mpris.get_CanControl = lambda *_: True
-        self.core.current_playlist.append([Track(uri='dummy:a')])
+        self.core.tracklist.add([Track(uri='dummy:a')])
         self.core.playback.repeat = True
         self.core.playback.play()
         result = self.mpris.Get(objects.PLAYER_IFACE, 'CanGoNext')
@@ -284,16 +283,14 @@ class PlayerInterfaceTest(unittest.TestCase):
 
     def test_can_go_next_is_false_if_can_control_is_false(self):
         self.mpris.get_CanControl = lambda *_: False
-        self.core.current_playlist.append([
-            Track(uri='dummy:a'), Track(uri='dummy:b')])
+        self.core.tracklist.add([Track(uri='dummy:a'), Track(uri='dummy:b')])
         self.core.playback.play()
         result = self.mpris.Get(objects.PLAYER_IFACE, 'CanGoNext')
         self.assertFalse(result)
 
     def test_can_go_previous_is_true_if_can_control_and_previous_track(self):
         self.mpris.get_CanControl = lambda *_: True
-        self.core.current_playlist.append([
-            Track(uri='dummy:a'), Track(uri='dummy:b')])
+        self.core.tracklist.add([Track(uri='dummy:a'), Track(uri='dummy:b')])
         self.core.playback.play()
         self.core.playback.next()
         result = self.mpris.Get(objects.PLAYER_IFACE, 'CanGoPrevious')
@@ -301,7 +298,7 @@ class PlayerInterfaceTest(unittest.TestCase):
 
     def test_can_go_previous_is_false_if_previous_track_is_the_same(self):
         self.mpris.get_CanControl = lambda *_: True
-        self.core.current_playlist.append([Track(uri='dummy:a')])
+        self.core.tracklist.add([Track(uri='dummy:a')])
         self.core.playback.repeat = True
         self.core.playback.play()
         result = self.mpris.Get(objects.PLAYER_IFACE, 'CanGoPrevious')
@@ -309,8 +306,7 @@ class PlayerInterfaceTest(unittest.TestCase):
 
     def test_can_go_previous_is_false_if_can_control_is_false(self):
         self.mpris.get_CanControl = lambda *_: False
-        self.core.current_playlist.append([
-            Track(uri='dummy:a'), Track(uri='dummy:b')])
+        self.core.tracklist.add([Track(uri='dummy:a'), Track(uri='dummy:b')])
         self.core.playback.play()
         self.core.playback.next()
         result = self.mpris.Get(objects.PLAYER_IFACE, 'CanGoPrevious')
@@ -318,7 +314,7 @@ class PlayerInterfaceTest(unittest.TestCase):
 
     def test_can_play_is_true_if_can_control_and_current_track(self):
         self.mpris.get_CanControl = lambda *_: True
-        self.core.current_playlist.append([Track(uri='dummy:a')])
+        self.core.tracklist.add([Track(uri='dummy:a')])
         self.core.playback.play()
         self.assertTrue(self.core.playback.current_track.get())
         result = self.mpris.Get(objects.PLAYER_IFACE, 'CanPlay')
@@ -361,16 +357,14 @@ class PlayerInterfaceTest(unittest.TestCase):
 
     def test_next_is_ignored_if_can_go_next_is_false(self):
         self.mpris.get_CanGoNext = lambda *_: False
-        self.core.current_playlist.append([
-            Track(uri='dummy:a'), Track(uri='dummy:b')])
+        self.core.tracklist.add([Track(uri='dummy:a'), Track(uri='dummy:b')])
         self.core.playback.play()
         self.assertEqual(self.core.playback.current_track.get().uri, 'dummy:a')
         self.mpris.Next()
         self.assertEqual(self.core.playback.current_track.get().uri, 'dummy:a')
 
     def test_next_when_playing_skips_to_next_track_and_keep_playing(self):
-        self.core.current_playlist.append([
-            Track(uri='dummy:a'), Track(uri='dummy:b')])
+        self.core.tracklist.add([Track(uri='dummy:a'), Track(uri='dummy:b')])
         self.core.playback.play()
         self.assertEqual(self.core.playback.current_track.get().uri, 'dummy:a')
         self.assertEqual(self.core.playback.state.get(), PLAYING)
@@ -379,8 +373,7 @@ class PlayerInterfaceTest(unittest.TestCase):
         self.assertEqual(self.core.playback.state.get(), PLAYING)
 
     def test_next_when_at_end_of_list_should_stop_playback(self):
-        self.core.current_playlist.append([
-            Track(uri='dummy:a'), Track(uri='dummy:b')])
+        self.core.tracklist.add([Track(uri='dummy:a'), Track(uri='dummy:b')])
         self.core.playback.play()
         self.core.playback.next()
         self.assertEqual(self.core.playback.current_track.get().uri, 'dummy:b')
@@ -389,8 +382,7 @@ class PlayerInterfaceTest(unittest.TestCase):
         self.assertEqual(self.core.playback.state.get(), STOPPED)
 
     def test_next_when_paused_should_skip_to_next_track_and_stay_paused(self):
-        self.core.current_playlist.append([
-            Track(uri='dummy:a'), Track(uri='dummy:b')])
+        self.core.tracklist.add([Track(uri='dummy:a'), Track(uri='dummy:b')])
         self.core.playback.play()
         self.core.playback.pause()
         self.assertEqual(self.core.playback.current_track.get().uri, 'dummy:a')
@@ -400,8 +392,7 @@ class PlayerInterfaceTest(unittest.TestCase):
         self.assertEqual(self.core.playback.state.get(), PAUSED)
 
     def test_next_when_stopped_skips_to_next_track_and_stay_stopped(self):
-        self.core.current_playlist.append([
-            Track(uri='dummy:a'), Track(uri='dummy:b')])
+        self.core.tracklist.add([Track(uri='dummy:a'), Track(uri='dummy:b')])
         self.core.playback.play()
         self.core.playback.stop()
         self.assertEqual(self.core.playback.current_track.get().uri, 'dummy:a')
@@ -412,8 +403,7 @@ class PlayerInterfaceTest(unittest.TestCase):
 
     def test_previous_is_ignored_if_can_go_previous_is_false(self):
         self.mpris.get_CanGoPrevious = lambda *_: False
-        self.core.current_playlist.append([
-            Track(uri='dummy:a'), Track(uri='dummy:b')])
+        self.core.tracklist.add([Track(uri='dummy:a'), Track(uri='dummy:b')])
         self.core.playback.play()
         self.core.playback.next()
         self.assertEqual(self.core.playback.current_track.get().uri, 'dummy:b')
@@ -421,8 +411,7 @@ class PlayerInterfaceTest(unittest.TestCase):
         self.assertEqual(self.core.playback.current_track.get().uri, 'dummy:b')
 
     def test_previous_when_playing_skips_to_prev_track_and_keep_playing(self):
-        self.core.current_playlist.append([
-            Track(uri='dummy:a'), Track(uri='dummy:b')])
+        self.core.tracklist.add([Track(uri='dummy:a'), Track(uri='dummy:b')])
         self.core.playback.play()
         self.core.playback.next()
         self.assertEqual(self.core.playback.current_track.get().uri, 'dummy:b')
@@ -432,8 +421,7 @@ class PlayerInterfaceTest(unittest.TestCase):
         self.assertEqual(self.core.playback.state.get(), PLAYING)
 
     def test_previous_when_at_start_of_list_should_stop_playback(self):
-        self.core.current_playlist.append([
-            Track(uri='dummy:a'), Track(uri='dummy:b')])
+        self.core.tracklist.add([Track(uri='dummy:a'), Track(uri='dummy:b')])
         self.core.playback.play()
         self.assertEqual(self.core.playback.current_track.get().uri, 'dummy:a')
         self.assertEqual(self.core.playback.state.get(), PLAYING)
@@ -441,8 +429,7 @@ class PlayerInterfaceTest(unittest.TestCase):
         self.assertEqual(self.core.playback.state.get(), STOPPED)
 
     def test_previous_when_paused_skips_to_previous_track_and_pause(self):
-        self.core.current_playlist.append([
-            Track(uri='dummy:a'), Track(uri='dummy:b')])
+        self.core.tracklist.add([Track(uri='dummy:a'), Track(uri='dummy:b')])
         self.core.playback.play()
         self.core.playback.next()
         self.core.playback.pause()
@@ -453,8 +440,7 @@ class PlayerInterfaceTest(unittest.TestCase):
         self.assertEqual(self.core.playback.state.get(), PAUSED)
 
     def test_previous_when_stopped_skips_to_previous_track_and_stops(self):
-        self.core.current_playlist.append([
-            Track(uri='dummy:a'), Track(uri='dummy:b')])
+        self.core.tracklist.add([Track(uri='dummy:a'), Track(uri='dummy:b')])
         self.core.playback.play()
         self.core.playback.next()
         self.core.playback.stop()
@@ -466,24 +452,21 @@ class PlayerInterfaceTest(unittest.TestCase):
 
     def test_pause_is_ignored_if_can_pause_is_false(self):
         self.mpris.get_CanPause = lambda *_: False
-        self.core.current_playlist.append([
-            Track(uri='dummy:a'), Track(uri='dummy:b')])
+        self.core.tracklist.add([Track(uri='dummy:a'), Track(uri='dummy:b')])
         self.core.playback.play()
         self.assertEqual(self.core.playback.state.get(), PLAYING)
         self.mpris.Pause()
         self.assertEqual(self.core.playback.state.get(), PLAYING)
 
     def test_pause_when_playing_should_pause_playback(self):
-        self.core.current_playlist.append([
-            Track(uri='dummy:a'), Track(uri='dummy:b')])
+        self.core.tracklist.add([Track(uri='dummy:a'), Track(uri='dummy:b')])
         self.core.playback.play()
         self.assertEqual(self.core.playback.state.get(), PLAYING)
         self.mpris.Pause()
         self.assertEqual(self.core.playback.state.get(), PAUSED)
 
     def test_pause_when_paused_has_no_effect(self):
-        self.core.current_playlist.append([
-            Track(uri='dummy:a'), Track(uri='dummy:b')])
+        self.core.tracklist.add([Track(uri='dummy:a'), Track(uri='dummy:b')])
         self.core.playback.play()
         self.core.playback.pause()
         self.assertEqual(self.core.playback.state.get(), PAUSED)
@@ -492,24 +475,21 @@ class PlayerInterfaceTest(unittest.TestCase):
 
     def test_playpause_is_ignored_if_can_pause_is_false(self):
         self.mpris.get_CanPause = lambda *_: False
-        self.core.current_playlist.append([
-            Track(uri='dummy:a'), Track(uri='dummy:b')])
+        self.core.tracklist.add([Track(uri='dummy:a'), Track(uri='dummy:b')])
         self.core.playback.play()
         self.assertEqual(self.core.playback.state.get(), PLAYING)
         self.mpris.PlayPause()
         self.assertEqual(self.core.playback.state.get(), PLAYING)
 
     def test_playpause_when_playing_should_pause_playback(self):
-        self.core.current_playlist.append([
-            Track(uri='dummy:a'), Track(uri='dummy:b')])
+        self.core.tracklist.add([Track(uri='dummy:a'), Track(uri='dummy:b')])
         self.core.playback.play()
         self.assertEqual(self.core.playback.state.get(), PLAYING)
         self.mpris.PlayPause()
         self.assertEqual(self.core.playback.state.get(), PAUSED)
 
     def test_playpause_when_paused_should_resume_playback(self):
-        self.core.current_playlist.append([
-            Track(uri='dummy:a'), Track(uri='dummy:b')])
+        self.core.tracklist.add([Track(uri='dummy:a'), Track(uri='dummy:b')])
         self.core.playback.play()
         self.core.playback.pause()
 
@@ -524,32 +504,28 @@ class PlayerInterfaceTest(unittest.TestCase):
         self.assertGreaterEqual(after_pause, at_pause)
 
     def test_playpause_when_stopped_should_start_playback(self):
-        self.core.current_playlist.append([
-            Track(uri='dummy:a'), Track(uri='dummy:b')])
+        self.core.tracklist.add([Track(uri='dummy:a'), Track(uri='dummy:b')])
         self.assertEqual(self.core.playback.state.get(), STOPPED)
         self.mpris.PlayPause()
         self.assertEqual(self.core.playback.state.get(), PLAYING)
 
     def test_stop_is_ignored_if_can_control_is_false(self):
         self.mpris.get_CanControl = lambda *_: False
-        self.core.current_playlist.append([
-            Track(uri='dummy:a'), Track(uri='dummy:b')])
+        self.core.tracklist.add([Track(uri='dummy:a'), Track(uri='dummy:b')])
         self.core.playback.play()
         self.assertEqual(self.core.playback.state.get(), PLAYING)
         self.mpris.Stop()
         self.assertEqual(self.core.playback.state.get(), PLAYING)
 
     def test_stop_when_playing_should_stop_playback(self):
-        self.core.current_playlist.append([
-            Track(uri='dummy:a'), Track(uri='dummy:b')])
+        self.core.tracklist.add([Track(uri='dummy:a'), Track(uri='dummy:b')])
         self.core.playback.play()
         self.assertEqual(self.core.playback.state.get(), PLAYING)
         self.mpris.Stop()
         self.assertEqual(self.core.playback.state.get(), STOPPED)
 
     def test_stop_when_paused_should_stop_playback(self):
-        self.core.current_playlist.append([
-            Track(uri='dummy:a'), Track(uri='dummy:b')])
+        self.core.tracklist.add([Track(uri='dummy:a'), Track(uri='dummy:b')])
         self.core.playback.play()
         self.core.playback.pause()
         self.assertEqual(self.core.playback.state.get(), PAUSED)
@@ -558,21 +534,19 @@ class PlayerInterfaceTest(unittest.TestCase):
 
     def test_play_is_ignored_if_can_play_is_false(self):
         self.mpris.get_CanPlay = lambda *_: False
-        self.core.current_playlist.append([
-            Track(uri='dummy:a'), Track(uri='dummy:b')])
+        self.core.tracklist.add([Track(uri='dummy:a'), Track(uri='dummy:b')])
         self.assertEqual(self.core.playback.state.get(), STOPPED)
         self.mpris.Play()
         self.assertEqual(self.core.playback.state.get(), STOPPED)
 
     def test_play_when_stopped_starts_playback(self):
-        self.core.current_playlist.append([
-            Track(uri='dummy:a'), Track(uri='dummy:b')])
+        self.core.tracklist.add([Track(uri='dummy:a'), Track(uri='dummy:b')])
         self.assertEqual(self.core.playback.state.get(), STOPPED)
         self.mpris.Play()
         self.assertEqual(self.core.playback.state.get(), PLAYING)
 
     def test_play_after_pause_resumes_from_same_position(self):
-        self.core.current_playlist.append([Track(uri='dummy:a', length=40000)])
+        self.core.tracklist.add([Track(uri='dummy:a', length=40000)])
         self.core.playback.play()
 
         before_pause = self.core.playback.time_position.get()
@@ -589,14 +563,14 @@ class PlayerInterfaceTest(unittest.TestCase):
         self.assertGreaterEqual(after_pause, at_pause)
 
     def test_play_when_there_is_no_track_has_no_effect(self):
-        self.core.current_playlist.clear()
+        self.core.tracklist.clear()
         self.assertEqual(self.core.playback.state.get(), STOPPED)
         self.mpris.Play()
         self.assertEqual(self.core.playback.state.get(), STOPPED)
 
     def test_seek_is_ignored_if_can_seek_is_false(self):
         self.mpris.get_CanSeek = lambda *_: False
-        self.core.current_playlist.append([Track(uri='dummy:a', length=40000)])
+        self.core.tracklist.add([Track(uri='dummy:a', length=40000)])
         self.core.playback.play()
 
         before_seek = self.core.playback.time_position.get()
@@ -612,7 +586,7 @@ class PlayerInterfaceTest(unittest.TestCase):
         self.assertLess(after_seek, before_seek + milliseconds_to_seek)
 
     def test_seek_seeks_given_microseconds_forward_in_the_current_track(self):
-        self.core.current_playlist.append([Track(uri='dummy:a', length=40000)])
+        self.core.tracklist.add([Track(uri='dummy:a', length=40000)])
         self.core.playback.play()
 
         before_seek = self.core.playback.time_position.get()
@@ -629,7 +603,7 @@ class PlayerInterfaceTest(unittest.TestCase):
         self.assertGreaterEqual(after_seek, before_seek + milliseconds_to_seek)
 
     def test_seek_seeks_given_microseconds_backward_if_negative(self):
-        self.core.current_playlist.append([Track(uri='dummy:a', length=40000)])
+        self.core.tracklist.add([Track(uri='dummy:a', length=40000)])
         self.core.playback.play()
         self.core.playback.seek(20000)
 
@@ -648,7 +622,7 @@ class PlayerInterfaceTest(unittest.TestCase):
         self.assertLess(after_seek, before_seek)
 
     def test_seek_seeks_to_start_of_track_if_new_position_is_negative(self):
-        self.core.current_playlist.append([Track(uri='dummy:a', length=40000)])
+        self.core.tracklist.add([Track(uri='dummy:a', length=40000)])
         self.core.playback.play()
         self.core.playback.seek(20000)
 
@@ -668,7 +642,7 @@ class PlayerInterfaceTest(unittest.TestCase):
         self.assertGreaterEqual(after_seek, 0)
 
     def test_seek_skips_to_next_track_if_new_position_gt_track_length(self):
-        self.core.current_playlist.append([
+        self.core.tracklist.add([
             Track(uri='dummy:a', length=40000),
             Track(uri='dummy:b')])
         self.core.playback.play()
@@ -693,7 +667,7 @@ class PlayerInterfaceTest(unittest.TestCase):
 
     def test_set_position_is_ignored_if_can_seek_is_false(self):
         self.mpris.get_CanSeek = lambda *_: False
-        self.core.current_playlist.append([Track(uri='dummy:a', length=40000)])
+        self.core.tracklist.add([Track(uri='dummy:a', length=40000)])
         self.core.playback.play()
 
         before_set_position = self.core.playback.time_position.get()
@@ -711,7 +685,7 @@ class PlayerInterfaceTest(unittest.TestCase):
         self.assertLess(after_set_position, position_to_set_in_millisec)
 
     def test_set_position_sets_the_current_track_position_in_microsecs(self):
-        self.core.current_playlist.append([Track(uri='dummy:a', length=40000)])
+        self.core.tracklist.add([Track(uri='dummy:a', length=40000)])
         self.core.playback.play()
 
         before_set_position = self.core.playback.time_position.get()
@@ -732,7 +706,7 @@ class PlayerInterfaceTest(unittest.TestCase):
             after_set_position, position_to_set_in_millisec)
 
     def test_set_position_does_nothing_if_the_position_is_negative(self):
-        self.core.current_playlist.append([Track(uri='dummy:a', length=40000)])
+        self.core.tracklist.add([Track(uri='dummy:a', length=40000)])
         self.core.playback.play()
         self.core.playback.seek(20000)
 
@@ -755,7 +729,7 @@ class PlayerInterfaceTest(unittest.TestCase):
         self.assertEqual(self.core.playback.current_track.get().uri, 'dummy:a')
 
     def test_set_position_does_nothing_if_position_is_gt_track_length(self):
-        self.core.current_playlist.append([Track(uri='dummy:a', length=40000)])
+        self.core.tracklist.add([Track(uri='dummy:a', length=40000)])
         self.core.playback.play()
         self.core.playback.seek(20000)
 
@@ -778,7 +752,7 @@ class PlayerInterfaceTest(unittest.TestCase):
         self.assertEqual(self.core.playback.current_track.get().uri, 'dummy:a')
 
     def test_set_position_is_noop_if_track_id_isnt_current_track(self):
-        self.core.current_playlist.append([Track(uri='dummy:a', length=40000)])
+        self.core.tracklist.add([Track(uri='dummy:a', length=40000)])
         self.core.playback.play()
         self.core.playback.seek(20000)
 
@@ -805,30 +779,26 @@ class PlayerInterfaceTest(unittest.TestCase):
         self.backend.library.dummy_library = [
             Track(uri='dummy:/test/uri')]
         self.mpris.OpenUri('dummy:/test/uri')
-        self.assertEqual(len(self.core.current_playlist.tracks.get()), 0)
+        self.assertEqual(len(self.core.tracklist.tracks.get()), 0)
 
     def test_open_uri_ignores_uris_with_unknown_uri_scheme(self):
         self.assertListEqual(self.core.uri_schemes.get(), ['dummy'])
         self.mpris.get_CanPlay = lambda *_: True
-        self.backend.library.dummy_library = [
-            Track(uri='notdummy:/test/uri')]
+        self.backend.library.dummy_library = [Track(uri='notdummy:/test/uri')]
         self.mpris.OpenUri('notdummy:/test/uri')
-        self.assertEqual(len(self.core.current_playlist.tracks.get()), 0)
+        self.assertEqual(len(self.core.tracklist.tracks.get()), 0)
 
-    def test_open_uri_adds_uri_to_current_playlist(self):
+    def test_open_uri_adds_uri_to_tracklist(self):
         self.mpris.get_CanPlay = lambda *_: True
-        self.backend.library.dummy_library = [
-            Track(uri='dummy:/test/uri')]
+        self.backend.library.dummy_library = [Track(uri='dummy:/test/uri')]
         self.mpris.OpenUri('dummy:/test/uri')
         self.assertEqual(
-            self.core.current_playlist.tracks.get()[0].uri, 'dummy:/test/uri')
+            self.core.tracklist.tracks.get()[0].uri, 'dummy:/test/uri')
 
     def test_open_uri_starts_playback_of_new_track_if_stopped(self):
         self.mpris.get_CanPlay = lambda *_: True
-        self.backend.library.dummy_library = [
-            Track(uri='dummy:/test/uri')]
-        self.core.current_playlist.append([
-            Track(uri='dummy:a'), Track(uri='dummy:b')])
+        self.backend.library.dummy_library = [Track(uri='dummy:/test/uri')]
+        self.core.tracklist.add([Track(uri='dummy:a'), Track(uri='dummy:b')])
         self.assertEqual(self.core.playback.state.get(), STOPPED)
 
         self.mpris.OpenUri('dummy:/test/uri')
@@ -839,10 +809,8 @@ class PlayerInterfaceTest(unittest.TestCase):
 
     def test_open_uri_starts_playback_of_new_track_if_paused(self):
         self.mpris.get_CanPlay = lambda *_: True
-        self.backend.library.dummy_library = [
-            Track(uri='dummy:/test/uri')]
-        self.core.current_playlist.append([
-            Track(uri='dummy:a'), Track(uri='dummy:b')])
+        self.backend.library.dummy_library = [Track(uri='dummy:/test/uri')]
+        self.core.tracklist.add([Track(uri='dummy:a'), Track(uri='dummy:b')])
         self.core.playback.play()
         self.core.playback.pause()
         self.assertEqual(self.core.playback.state.get(), PAUSED)
@@ -856,10 +824,8 @@ class PlayerInterfaceTest(unittest.TestCase):
 
     def test_open_uri_starts_playback_of_new_track_if_playing(self):
         self.mpris.get_CanPlay = lambda *_: True
-        self.backend.library.dummy_library = [
-            Track(uri='dummy:/test/uri')]
-        self.core.current_playlist.append([
-            Track(uri='dummy:a'), Track(uri='dummy:b')])
+        self.backend.library.dummy_library = [Track(uri='dummy:/test/uri')]
+        self.core.tracklist.add([Track(uri='dummy:a'), Track(uri='dummy:b')])
         self.core.playback.play()
         self.assertEqual(self.core.playback.state.get(), PLAYING)
         self.assertEqual(self.core.playback.current_track.get().uri, 'dummy:a')

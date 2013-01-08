@@ -1,9 +1,8 @@
-import itertools
+from __future__ import unicode_literals
+
 import urlparse
 
 import pykka
-
-from mopidy.models import Playlist
 
 
 class LibraryController(object):
@@ -15,43 +14,51 @@ class LibraryController(object):
 
     def _get_backend(self, uri):
         uri_scheme = urlparse.urlparse(uri).scheme
-        return self.backends.by_uri_scheme.get(uri_scheme, None)
+        return self.backends.with_library_by_uri_scheme.get(uri_scheme, None)
 
-    def find_exact(self, **query):
+    def find_exact(self, query=None, **kwargs):
         """
         Search the library for tracks where ``field`` is ``values``.
 
         Examples::
 
             # Returns results matching 'a'
+            find_exact({'any': ['a']})
             find_exact(any=['a'])
+
             # Returns results matching artist 'xyz'
+            find_exact({'artist': ['xyz']})
             find_exact(artist=['xyz'])
+
             # Returns results matching 'a' and 'b' and artist 'xyz'
+            find_exact({'any': ['a', 'b'], 'artist': ['xyz']})
             find_exact(any=['a', 'b'], artist=['xyz'])
 
         :param query: one or more queries to search for
         :type query: dict
-        :rtype: :class:`mopidy.models.Playlist`
+        :rtype: list of :class:`mopidy.models.SearchResult`
         """
-        futures = [b.library.find_exact(**query) for b in self.backends]
-        results = pykka.get_all(futures)
-        return Playlist(tracks=[
-            track for playlist in results for track in playlist.tracks])
+        query = query or kwargs
+        futures = [
+            b.library.find_exact(**query) for b in self.backends.with_library]
+        return [result for result in pykka.get_all(futures) if result]
 
     def lookup(self, uri):
         """
-        Lookup track with given URI. Returns :class:`None` if not found.
+        Lookup the given URI.
+
+        If the URI expands to multiple tracks, the returned list will contain
+        them all.
 
         :param uri: track URI
         :type uri: string
-        :rtype: :class:`mopidy.models.Track` or :class:`None`
+        :rtype: list of :class:`mopidy.models.Track`
         """
         backend = self._get_backend(uri)
         if backend:
             return backend.library.lookup(uri).get()
         else:
-            return None
+            return []
 
     def refresh(self, uri=None):
         """
@@ -65,28 +72,33 @@ class LibraryController(object):
             if backend:
                 backend.library.refresh(uri).get()
         else:
-            futures = [b.library.refresh(uri) for b in self.backends]
+            futures = [
+                b.library.refresh(uri) for b in self.backends.with_library]
             pykka.get_all(futures)
 
-    def search(self, **query):
+    def search(self, query=None, **kwargs):
         """
         Search the library for tracks where ``field`` contains ``values``.
 
         Examples::
 
             # Returns results matching 'a'
+            search({'any': ['a']})
             search(any=['a'])
+
             # Returns results matching artist 'xyz'
+            search({'artist': ['xyz']})
             search(artist=['xyz'])
+
             # Returns results matching 'a' and 'b' and artist 'xyz'
+            search({'any': ['a', 'b'], 'artist': ['xyz']})
             search(any=['a', 'b'], artist=['xyz'])
 
         :param query: one or more queries to search for
         :type query: dict
-        :rtype: :class:`mopidy.models.Playlist`
+        :rtype: list of :class:`mopidy.models.SearchResult`
         """
-        futures = [b.library.search(**query) for b in self.backends]
-        results = pykka.get_all(futures)
-        track_lists = [playlist.tracks for playlist in results]
-        tracks = list(itertools.chain(*track_lists))
-        return Playlist(tracks=tracks)
+        query = query or kwargs
+        futures = [
+            b.library.search(**query) for b in self.backends.with_library]
+        return [result for result in pykka.get_all(futures) if result]

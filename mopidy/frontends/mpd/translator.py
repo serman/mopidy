@@ -1,9 +1,14 @@
+from __future__ import unicode_literals
+
 import os
 import re
+import shlex
+import urllib
 
 from mopidy import settings
 from mopidy.frontends.mpd import protocol
-from mopidy.models import CpTrack
+from mopidy.frontends.mpd.exceptions import MpdArgError
+from mopidy.models import TlTrack
 from mopidy.utils.path import mtime as get_mtime, uri_to_path, split_path
 
 
@@ -12,7 +17,7 @@ def track_to_mpd_format(track, position=None):
     Format track for output to MPD client.
 
     :param track: the track
-    :type track: :class:`mopidy.models.Track` or :class:`mopidy.models.CpTrack`
+    :type track: :class:`mopidy.models.Track` or :class:`mopidy.models.TlTrack`
     :param position: track's position in playlist
     :type position: integer
     :param key: if we should set key
@@ -21,10 +26,10 @@ def track_to_mpd_format(track, position=None):
     :type mtime: boolean
     :rtype: list of two-tuples
     """
-    if isinstance(track, CpTrack):
-        (cpid, track) = track
+    if isinstance(track, TlTrack):
+        (tlid, track) = track
     else:
-        (cpid, track) = (None, track)
+        (tlid, track) = (None, track)
     result = [
         ('file', track.uri or ''),
         ('Time', track.length and (track.length // 1000) or 0),
@@ -41,9 +46,9 @@ def track_to_mpd_format(track, position=None):
     if track.album is not None and track.album.artists:
         artists = artists_to_mpd_format(track.album.artists)
         result.append(('AlbumArtist', artists))
-    if position is not None and cpid is not None:
+    if position is not None and tlid is not None:
         result.append(('Pos', position))
-        result.append(('Id', cpid))
+        result.append(('Id', tlid))
     if track.album is not None and track.album.musicbrainz_id is not None:
         result.append(('MUSICBRAINZ_ALBUMID', track.album.musicbrainz_id))
     # FIXME don't use first and best artist?
@@ -93,7 +98,7 @@ def artists_to_mpd_format(artists):
     """
     artists = list(artists)
     artists.sort(key=lambda a: a.name)
-    return u', '.join([a.name for a in artists if a.name])
+    return ', '.join([a.name for a in artists if a.name])
 
 
 def tracks_to_mpd_format(tracks, start=0, end=None):
@@ -104,7 +109,7 @@ def tracks_to_mpd_format(tracks, start=0, end=None):
 
     :param tracks: the tracks
     :type tracks: list of :class:`mopidy.models.Track` or
-        :class:`mopidy.models.CpTrack`
+        :class:`mopidy.models.TlTrack`
     :param start: position of first track to include in output
     :type start: int (positive or negative)
     :param end: position after last track to include in output
@@ -131,6 +136,86 @@ def playlist_to_mpd_format(playlist, *args, **kwargs):
     return tracks_to_mpd_format(playlist.tracks, *args, **kwargs)
 
 
+def query_from_mpd_list_format(field, mpd_query):
+    """
+    Converts an MPD ``list`` query to a Mopidy query.
+    """
+    # NOTE kwargs dict keys must be bytestrings to work on Python < 2.6.5
+    # See https://github.com/mopidy/mopidy/issues/302 for details
+    if mpd_query is None:
+        return {}
+    try:
+        # shlex does not seem to be friends with unicode objects
+        tokens = shlex.split(mpd_query.encode('utf-8'))
+    except ValueError as error:
+        if str(error) == 'No closing quotation':
+            raise MpdArgError('Invalid unquoted character', command='list')
+        else:
+            raise
+    tokens = [t.decode('utf-8') for t in tokens]
+    if len(tokens) == 1:
+        if field == 'album':
+            if not tokens[0]:
+                raise ValueError
+            return {b'artist': [tokens[0]]}  # See above NOTE
+        else:
+            raise MpdArgError(
+                'should be "Album" for 3 arguments', command='list')
+    elif len(tokens) % 2 == 0:
+        query = {}
+        while tokens:
+            key = str(tokens[0].lower())  # See above NOTE
+            value = tokens[1]
+            tokens = tokens[2:]
+            if key not in ('artist', 'album', 'date', 'genre'):
+                raise MpdArgError('not able to parse args', command='list')
+            if not value:
+                raise ValueError
+            if key in query:
+                query[key].append(value)
+            else:
+                query[key] = [value]
+        return query
+    else:
+        raise MpdArgError('not able to parse args', command='list')
+
+
+def query_from_mpd_search_format(mpd_query):
+    """
+    Parses an MPD ``search`` or ``find`` query and converts it to the Mopidy
+    query format.
+
+    :param mpd_query: the MPD search query
+    :type mpd_query: string
+    """
+    # XXX The regexps below should be refactored to reuse common patterns here
+    # and in mopidy.frontends.mpd.protocol.music_db.
+    query_pattern = (
+        r'"?(?:[Aa]lbum|[Aa]rtist|[Dd]ate|[Ff]ile|[Ff]ilename|'
+        r'[Tt]itle|[Aa]ny)"? "[^"]+"')
+    query_parts = re.findall(query_pattern, mpd_query)
+    query_part_pattern = (
+        r'"?(?P<field>([Aa]lbum|[Aa]rtist|[Dd]ate|[Ff]ile|[Ff]ilename|'
+        r'[Tt]itle|[Aa]ny))"? "(?P<what>[^"]+)"')
+    query = {}
+    for query_part in query_parts:
+        m = re.match(query_part_pattern, query_part)
+        field = m.groupdict()['field'].lower()
+        if field == 'title':
+            field = 'track'
+        elif field in ('file', 'filename'):
+            field = 'uri'
+        field = str(field)  # Needed for kwargs keys on OS X and Windows
+        what = m.groupdict()['what']
+        if not what:
+            raise ValueError
+        if field in query:
+            query[field].append(what)
+        else:
+            query[field] = [what]
+    return query
+
+
 def tracks_to_tag_cache_format(tracks):
     """
     Format list of tracks for output to MPD tag cache
@@ -151,42 +236,56 @@ def tracks_to_tag_cache_format(tracks):
 
 
 def _add_to_tag_cache(result, folders, files):
-    music_folder = settings.LOCAL_MUSIC_PATH
-    regexp = '^' + re.escape(music_folder).rstrip('/') + '/?'
+    base_path = settings.LOCAL_MUSIC_PATH.encode('utf-8')
 
     for path, entry in folders.items():
-        name = os.path.split(path)[1]
-        mtime = get_mtime(os.path.join(music_folder, path))
-        result.append(('directory', path))
-        result.append(('mtime', mtime))
+        try:
+            text_path = path.decode('utf-8')
+        except UnicodeDecodeError:
+            text_path = urllib.quote(path).decode('utf-8')
+        name = os.path.split(text_path)[1]
+        result.append(('directory', text_path))
+        result.append(('mtime', get_mtime(os.path.join(base_path, path))))
         result.append(('begin', name))
         _add_to_tag_cache(result, *entry)
         result.append(('end', name))
 
     result.append(('songList begin',))
+
     for track in files:
         track_result = dict(track_to_mpd_format(track))
+
         path = uri_to_path(track_result['file'])
+        try:
+            text_path = path.decode('utf-8')
+        except UnicodeDecodeError:
+            text_path = urllib.quote(path).decode('utf-8')
+        relative_path = os.path.relpath(path, base_path)
+        relative_uri = urllib.quote(relative_path)
+
+        track_result['file'] = relative_uri
         track_result['mtime'] = get_mtime(path)
-        track_result['file'] = re.sub(regexp, '', path)
-        track_result['key'] = os.path.basename(track_result['file'])
+        track_result['key'] = os.path.basename(text_path)
         track_result = order_mpd_track_info(track_result.items())
+
         result.extend(track_result)
+
     result.append(('songList end',))
 
 
 def tracks_to_directory_tree(tracks):
     directories = ({}, [])
+
     for track in tracks:
-        path = u''
+        path = b''
         current = directories
 
-        local_folder = settings.LOCAL_MUSIC_PATH
-        track_path = uri_to_path(track.uri)
-        track_path = re.sub('^' + re.escape(local_folder), '', track_path)
-        track_dir = os.path.dirname(track_path)
+        absolute_track_dir_path = os.path.dirname(uri_to_path(track.uri))
+        relative_track_dir_path = re.sub(
+            '^' + re.escape(settings.LOCAL_MUSIC_PATH), b'',
+            absolute_track_dir_path)
 
-        for part in split_path(track_dir):
+        for part in split_path(relative_track_dir_path):
             path = os.path.join(path, part)
             if path not in current[0]:
                 current[0][path] = ({}, [])

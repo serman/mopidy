@@ -1,3 +1,5 @@
+from __future__ import unicode_literals
+
 import datetime as dt
 
 from mopidy.frontends.mpd.exceptions import MpdNoExistError, MpdNotImplemented
@@ -5,7 +7,7 @@ from mopidy.frontends.mpd.protocol import handle_request
 from mopidy.frontends.mpd.translator import playlist_to_mpd_format
 
 
-@handle_request(r'^listplaylist (?P<name>\S+)$')
+@handle_request(r'^listplaylist (?P<name>\w+)$')
 @handle_request(r'^listplaylist "(?P<name>[^"]+)"$')
 def listplaylist(context, name):
     """
@@ -21,14 +23,13 @@ def listplaylist(context, name):
         file: relative/path/to/file2.ogg
         file: relative/path/to/file3.mp3
     """
-    try:
-        playlist = context.core.stored_playlists.get(name=name).get()
-        return ['file: %s' % t.uri for t in playlist.tracks]
-    except LookupError:
-        raise MpdNoExistError(u'No such playlist', command=u'listplaylist')
+    playlists = context.core.playlists.filter(name=name).get()
+    if not playlists:
+        raise MpdNoExistError('No such playlist', command='listplaylist')
+    return ['file: %s' % t.uri for t in playlists[0].tracks]
 
 
-@handle_request(r'^listplaylistinfo (?P<name>\S+)$')
+@handle_request(r'^listplaylistinfo (?P<name>\w+)$')
 @handle_request(r'^listplaylistinfo "(?P<name>[^"]+)"$')
 def listplaylistinfo(context, name):
     """
@@ -43,12 +44,10 @@ def listplaylistinfo(context, name):
         Standard track listing, with fields: file, Time, Title, Date,
         Album, Artist, Track
     """
-    try:
-        playlist = context.core.stored_playlists.get(name=name).get()
-        return playlist_to_mpd_format(playlist)
-    except LookupError:
-        raise MpdNoExistError(
-            u'No such playlist', command=u'listplaylistinfo')
+    playlists = context.core.playlists.filter(name=name).get()
+    if not playlists:
+        raise MpdNoExistError('No such playlist', command='listplaylistinfo')
+    return playlist_to_mpd_format(playlists[0])
 
 
 @handle_request(r'^listplaylists$')
@@ -71,39 +70,57 @@ def listplaylists(context):
         Last-Modified: 2010-02-06T02:10:25Z
         playlist: b
         Last-Modified: 2010-02-06T02:11:08Z
+
+    *Clarifications:*
+
+    - ncmpcpp 0.5.10 segfaults if we return 'playlist: ' on a line, so we must
+      ignore playlists without names, which isn't very useful anyway.
     """
     result = []
-    for playlist in context.core.stored_playlists.playlists.get():
-        result.append((u'playlist', playlist.name))
+    for playlist in context.core.playlists.playlists.get():
+        if not playlist.name:
+            continue
+        result.append(('playlist', playlist.name))
         last_modified = (
-            playlist.last_modified or dt.datetime.now()).isoformat()
+            playlist.last_modified or dt.datetime.utcnow()).isoformat()
         # Remove microseconds
         last_modified = last_modified.split('.')[0]
         # Add time zone information
-        # TODO Convert to UTC before adding Z
         last_modified = last_modified + 'Z'
-        result.append((u'Last-Modified', last_modified))
+        result.append(('Last-Modified', last_modified))
     return result
 
 
-@handle_request(r'^load "(?P<name>[^"]+)"$')
-def load(context, name):
+@handle_request(r'^load "(?P<name>[^"]+)"( "(?P<start>\d+):(?P<end>\d+)*")*$')
+def load(context, name, start=None, end=None):
     """
     *musicpd.org, stored playlists section:*
 
-        ``load {NAME}``
+        ``load {NAME} [START:END]``
 
-        Loads the playlist ``NAME.m3u`` from the playlist directory.
+        Loads the playlist into the current queue. Playlist plugins are
+        supported. A range may be specified to load only a part of the
+        playlist.
 
     *Clarifications:*
 
     - ``load`` appends the given playlist to the current playlist.
+
+    - MPD 0.17.1 does not support open-ended ranges, i.e. without end
+      specified, for the ``load`` command, even though MPD's general range docs
+      allows open-ended ranges.
+
+    - MPD 0.17.1 does not fail if the specified range is outside the playlist,
+      in either or both ends.
     """
-    try:
-        playlist = context.core.stored_playlists.get(name=name).get()
-        context.core.current_playlist.append(playlist.tracks)
-    except LookupError:
-        raise MpdNoExistError(u'No such playlist', command=u'load')
+    playlists = context.core.playlists.filter(name=name).get()
+    if not playlists:
+        raise MpdNoExistError('No such playlist', command='load')
+    if start is not None:
+        start = int(start)
+    if end is not None:
+        end = int(end)
+    context.core.tracklist.add(playlists[0].tracks[start:end])
 
 
 @handle_request(r'^playlistadd "(?P<name>[^"]+)" "(?P<uri>[^"]+)"$')

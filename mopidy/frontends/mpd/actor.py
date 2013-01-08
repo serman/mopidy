@@ -1,3 +1,5 @@
+from __future__ import unicode_literals
+
 import logging
 import sys
 
@@ -17,18 +19,21 @@ class MpdFrontend(pykka.ThreadingActor, CoreListener):
         hostname = network.format_hostname(settings.MPD_SERVER_HOSTNAME)
         port = settings.MPD_SERVER_PORT
 
+        # NOTE kwargs dict keys must be bytestrings to work on Python < 2.6.5
+        # See https://github.com/mopidy/mopidy/issues/302 for details.
         try:
             network.Server(
                 hostname, port,
-                protocol=session.MpdSession, protocol_kwargs={'core': core},
-                max_connections=settings.MPD_SERVER_MAX_CONNECTIONS)
+                protocol=session.MpdSession, protocol_kwargs={b'core': core},
+                max_connections=settings.MPD_SERVER_MAX_CONNECTIONS,
+                timeout=settings.MPD_SERVER_CONNECTION_TIMEOUT)
         except IOError as error:
             logger.error(
-                u'MPD server startup failed: %s',
+                'MPD server startup failed: %s',
                 encoding.locale_decode(error))
             sys.exit(1)
 
-        logger.info(u'MPD server running at [%s]:%s', hostname, port)
+        logger.info('MPD server running at [%s]:%s', hostname, port)
 
     def on_stop(self):
         process.stop_actors_by_class(session.MpdSession)
@@ -41,11 +46,11 @@ class MpdFrontend(pykka.ThreadingActor, CoreListener):
     def playback_state_changed(self, old_state, new_state):
         self.send_idle('player')
 
-    def playlist_changed(self):
+    def tracklist_changed(self):
         self.send_idle('playlist')
 
     def options_changed(self):
         self.send_idle('options')
 
-    def volume_changed(self):
+    def volume_changed(self, volume):
         self.send_idle('mixer')

@@ -1,3 +1,5 @@
+from __future__ import unicode_literals
+
 import logging
 
 import pykka
@@ -12,7 +14,7 @@ try:
     import indicate
 except ImportError as import_error:
     indicate = None  # noqa
-    logger.debug(u'Startup notification will not be sent (%s)', import_error)
+    logger.debug('Startup notification will not be sent (%s)', import_error)
 
 
 class MprisFrontend(pykka.ThreadingActor, CoreListener):
@@ -27,20 +29,20 @@ class MprisFrontend(pykka.ThreadingActor, CoreListener):
             self.mpris_object = objects.MprisObject(self.core)
             self._send_startup_notification()
         except Exception as e:
-            logger.error(u'MPRIS frontend setup failed (%s)', e)
+            logger.error('MPRIS frontend setup failed (%s)', e)
             self.stop()
 
     def on_stop(self):
-        logger.debug(u'Removing MPRIS object from D-Bus connection...')
+        logger.debug('Removing MPRIS object from D-Bus connection...')
         if self.mpris_object:
             self.mpris_object.remove_from_connection()
             self.mpris_object = None
-        logger.debug(u'Removed MPRIS object from D-Bus connection')
+        logger.debug('Removed MPRIS object from D-Bus connection')
 
     def _send_startup_notification(self):
         """
         Send startup notification using libindicate to make Mopidy appear in
-        e.g. `Ubuntu's sound menu <https://wiki.ubuntu.com/SoundMenu>`_.
+        e.g. `Ubunt's sound menu <https://wiki.ubuntu.com/SoundMenu>`_.
 
         A reference to the libindicate server is kept for as long as Mopidy is
         running. When Mopidy exits, the server will be unreferenced and Mopidy
@@ -48,42 +50,55 @@ class MprisFrontend(pykka.ThreadingActor, CoreListener):
         """
         if not indicate:
             return
-        logger.debug(u'Sending startup notification...')
+        logger.debug('Sending startup notification...')
         self.indicate_server = indicate.Server()
         self.indicate_server.set_type('music.mopidy')
         self.indicate_server.set_desktop_file(settings.DESKTOP_FILE)
         self.indicate_server.show()
-        logger.debug(u'Startup notification sent')
+        logger.debug('Startup notification sent')
 
-    def _emit_properties_changed(self, *changed_properties):
+    def _emit_properties_changed(self, interface, changed_properties):
         if self.mpris_object is None:
             return
         props_with_new_values = [
-            (p, self.mpris_object.Get(objects.PLAYER_IFACE, p))
+            (p, self.mpris_object.Get(interface, p))
             for p in changed_properties]
         self.mpris_object.PropertiesChanged(
-            objects.PLAYER_IFACE, dict(props_with_new_values), [])
+            interface, dict(props_with_new_values), [])
 
-    def track_playback_paused(self, track, time_position):
-        logger.debug(u'Received track playback paused event')
-        self._emit_properties_changed('PlaybackStatus')
+    def track_playback_paused(self, tl_track, time_position):
+        logger.debug('Received track_playback_paused event')
+        self._emit_properties_changed(objects.PLAYER_IFACE, ['PlaybackStatus'])
 
-    def track_playback_resumed(self, track, time_position):
-        logger.debug(u'Received track playback resumed event')
-        self._emit_properties_changed('PlaybackStatus')
+    def track_playback_resumed(self, tl_track, time_position):
+        logger.debug('Received track_playback_resumed event')
+        self._emit_properties_changed(objects.PLAYER_IFACE, ['PlaybackStatus'])
 
-    def track_playback_started(self, track):
-        logger.debug(u'Received track playback started event')
-        self._emit_properties_changed('PlaybackStatus', 'Metadata')
+    def track_playback_started(self, tl_track):
+        logger.debug('Received track_playback_started event')
+        self._emit_properties_changed(
+            objects.PLAYER_IFACE, ['PlaybackStatus', 'Metadata'])
 
-    def track_playback_ended(self, track, time_position):
-        logger.debug(u'Received track playback ended event')
-        self._emit_properties_changed('PlaybackStatus', 'Metadata')
+    def track_playback_ended(self, tl_track, time_position):
+        logger.debug('Received track_playback_ended event')
+        self._emit_properties_changed(
+            objects.PLAYER_IFACE, ['PlaybackStatus', 'Metadata'])
 
-    def volume_changed(self):
-        logger.debug(u'Received volume changed event')
-        self._emit_properties_changed('Volume')
+    def volume_changed(self, volume):
+        logger.debug('Received volume_changed event')
+        self._emit_properties_changed(objects.PLAYER_IFACE, ['Volume'])
 
     def seeked(self, time_position_in_ms):
-        logger.debug(u'Received seeked event')
+        logger.debug('Received seeked event')
         self.mpris_object.Seeked(time_position_in_ms * 1000)
+
+    def playlists_loaded(self):
+        logger.debug('Received playlists_loaded event')
+        self._emit_properties_changed(
+            objects.PLAYLISTS_IFACE, ['PlaylistCount'])
+
+    def playlist_changed(self, playlist):
+        logger.debug('Received playlist_changed event')
+        playlist_id = self.mpris_object.get_playlist_id(playlist.uri)
+        playlist = (playlist_id, playlist.name, '')
+        self.mpris_object.PlaylistChanged(playlist)

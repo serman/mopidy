@@ -1,3 +1,5 @@
+from __future__ import unicode_literals
+
 from mopidy import settings
 from mopidy.backends.local import LocalBackend
 from mopidy.core import PlaybackState
@@ -16,6 +18,7 @@ class LocalPlaybackControllerTest(PlaybackControllerTest, unittest.TestCase):
 
     def setUp(self):
         settings.BACKENDS = ('mopidy.backends.local.LocalBackend',)
+        settings.LOCAL_TAG_CACHE_FILE = path_to_data_dir('empty_tag_cache')
         super(LocalPlaybackControllerTest, self).setUp()
 
     def tearDown(self):
@@ -25,7 +28,7 @@ class LocalPlaybackControllerTest(PlaybackControllerTest, unittest.TestCase):
     def add_track(self, path):
         uri = path_to_uri(path_to_data_dir(path))
         track = Track(uri=uri, length=4464)
-        self.current_playlist.add(track)
+        self.tracklist.add([track])
 
     def test_uri_scheme(self):
         self.assertIn('file', self.core.uri_schemes)

@@ -1,11 +1,13 @@
+from __future__ import unicode_literals
+
 import logging
 import os
 import threading
 
 from spotify.manager import SpotifySessionManager as PyspotifySessionManager
 
-from mopidy import settings
-from mopidy.models import Playlist
+from mopidy import audio, settings
+from mopidy.backends.listener import BackendListener
 from mopidy.utils import process, versioning
 
 from . import translator
@@ -26,8 +28,12 @@ class SpotifySessionManager(process.BaseThread, PyspotifySessionManager):
     appkey_file = os.path.join(os.path.dirname(__file__), 'spotify_appkey.key')
     user_agent = 'Mopidy %s' % versioning.get_version()
 
-    def __init__(self, username, password, audio, backend_ref):
-        PyspotifySessionManager.__init__(self, username, password)
+    def __init__(self, username, password, audio, backend_ref, proxy=None,
+                 proxy_username=None, proxy_password=None):
+        PyspotifySessionManager.__init__(
+            self, username, password, proxy=proxy,
+            proxy_username=proxy_username,
+            proxy_password=proxy_password)
         process.BaseThread.__init__(self)
         self.name = 'SpotifyThread'
 
@@ -36,7 +42,8 @@ class SpotifySessionManager(process.BaseThread, PyspotifySessionManager):
         self.backend_ref = backend_ref
 
         self.connected = threading.Event()
-        self.session = None
+        self.push_audio_data = True
+        self.buffer_timestamp = 0
 
         self.container_manager = None
         self.playlist_manager = None
@@ -50,50 +57,59 @@ class SpotifySessionManager(process.BaseThread, PyspotifySessionManager):
     def logged_in(self, session, error):
         """Callback used by pyspotify"""
         if error:
-            logger.error(u'Spotify login error: %s', error)
+            logger.error('Spotify login error: %s', error)
             return
 
-        logger.info(u'Connected to Spotify')
-        self.session = session
+        logger.info('Connected to Spotify')
+
+        # To work with both pyspotify 1.9 and 1.10
+        if not hasattr(self, 'session'):
+            self.session = session
 
         logger.debug(
-            u'Preferred Spotify bitrate is %s kbps',
+            'Preferred Spotify bitrate is %s kbps',
             settings.SPOTIFY_BITRATE)
-        self.session.set_preferred_bitrate(BITRATES[settings.SPOTIFY_BITRATE])
+        session.set_preferred_bitrate(BITRATES[settings.SPOTIFY_BITRATE])
 
         self.container_manager = SpotifyContainerManager(self)
         self.playlist_manager = SpotifyPlaylistManager(self)
 
-        self.container_manager.watch(self.session.playlist_container())
+        self.container_manager.watch(session.playlist_container())
 
         self.connected.set()
 
     def logged_out(self, session):
         """Callback used by pyspotify"""
-        logger.info(u'Disconnected from Spotify')
+        logger.info('Disconnected from Spotify')
+        self.connected.clear()
 
     def metadata_updated(self, session):
         """Callback used by pyspotify"""
-        logger.debug(u'Callback called: Metadata updated')
+        logger.debug('Callback called: Metadata updated')
 
     def connection_error(self, session, error):
         """Callback used by pyspotify"""
         if error is None:
-            logger.info(u'Spotify connection OK')
+            logger.info('Spotify connection OK')
         else:
-            logger.error(u'Spotify connection error: %s', error)
-            self.backend.playback.pause()
+            logger.error('Spotify connection error: %s', error)
+            if self.audio.state.get() == audio.PlaybackState.PLAYING:
+                self.backend.playback.pause()
 
     def message_to_user(self, session, message):
         """Callback used by pyspotify"""
-        logger.debug(u'User message: %s', message.strip())
+        logger.debug('User message: %s', message.strip())
 
     def music_delivery(self, session, frames, frame_size, num_frames,
                        sample_type, sample_rate, channels):
         """Callback used by pyspotify"""
         # pylint: disable = R0913
         # Too many arguments (8/5)
-        assert sample_type == 0, u'Expects 16-bit signed integer samples'
+
+        if not self.push_audio_data:
+            return 0
+
+        assert sample_type == 0, 'Expects 16-bit signed integer samples'
         capabilites = """
             audio/x-raw-int,
             endianness=(int)1234,
@@ -106,61 +122,62 @@ class SpotifySessionManager(process.BaseThread, PyspotifySessionManager):
             'sample_rate': sample_rate,
             'channels': channels,
         }
-        self.audio.emit_data(capabilites, bytes(frames))
-        return num_frames
+
+        duration = audio.calculate_duration(num_frames, sample_rate)
+        buffer_ = audio.create_buffer(bytes(frames),
+                                      capabilites=capabilites,
+                                      timestamp=self.buffer_timestamp,
+                                      duration=duration)
+
+        self.buffer_timestamp += duration
+
+        if self.audio.emit_data(buffer_).get():
+            return num_frames
+        else:
+            return 0
 
     def play_token_lost(self, session):
         """Callback used by pyspotify"""
-        logger.debug(u'Play token lost')
+        logger.debug('Play token lost')
         self.backend.playback.pause()
 
     def log_message(self, session, data):
         """Callback used by pyspotify"""
-        logger.debug(u'System message: %s' % data.strip())
+        logger.debug('System message: %s' % data.strip())
         if 'offline-mgr' in data and 'files unlocked' in data:
             # XXX This is a very very fragile and ugly hack, but we get no
             # proper event when libspotify is done with initial data loading.
-            # We delay the expensive refresh of Mopidy's stored playlists until
-            # this message arrives. This way, we avoid doing the refresh once
-            # for every playlist or other change. This reduces the time from
+            # We delay the expensive refresh of Mopidy's playlists until this
+            # message arrives. This way, we avoid doing the refresh once for
+            # every playlist or other change. This reduces the time from
             # startup until the Spotify backend is ready from 35s to 12s in one
             # test with clean Spotify cache. In cases with an outdated cache
-            # the time improvements should be a lot better.
-            self._initial_data_receive_completed = True
-            self.refresh_stored_playlists()
+            # the time improvements should be a lot greater.
+            if not self._initial_data_receive_completed:
+                self._initial_data_receive_completed = True
+                self.refresh_playlists()
 
     def end_of_track(self, session):
         """Callback used by pyspotify"""
-        logger.debug(u'End of data stream reached')
+        logger.debug('End of data stream reached')
         self.audio.emit_end_of_stream()
 
-    def refresh_stored_playlists(self):
-        """Refresh the stored playlists in the backend with fresh meta data
-        from Spotify"""
+    def refresh_playlists(self):
+        """Refresh the playlists in the backend with data from Spotify"""
         if not self._initial_data_receive_completed:
-            logger.debug(u'Still getting data; skipped refresh of playlists')
+            logger.debug('Still getting data; skipped refresh of playlists')
             return
         playlists = map(
             translator.to_mopidy_playlist, self.session.playlist_container())
         playlists = filter(None, playlists)
-        self.backend.stored_playlists.playlists = playlists
-        logger.info(u'Loaded %d Spotify playlist(s)', len(playlists))
-
-    def search(self, query, queue):
-        """Search method used by Mopidy backend"""
-        def callback(results, userdata=None):
-            # TODO Include results from results.albums(), etc. too
-            # TODO Consider launching a second search if results.total_tracks()
-            # is larger than len(results.tracks())
-            playlist = Playlist(tracks=[
-                translator.to_mopidy_track(t) for t in results.tracks()])
-            queue.put(playlist)
-        self.connected.wait()
-        self.session.search(
-            query, callback, track_count=100, album_count=0, artist_count=0)
+        self.backend.playlists.playlists = playlists
+        logger.info('Loaded %d Spotify playlist(s)', len(playlists))
+        BackendListener.send('playlists_loaded')
 
     def logout(self):
         """Log out from spotify"""
-        logger.debug(u'Logging out from Spotify')
-        if self.session:
+        logger.debug('Logging out from Spotify')
+
+        # To work with both pyspotify 1.9 and 1.10
+        if getattr(self, 'session', None):
             self.session.logout()

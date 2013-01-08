@@ -20,8 +20,7 @@ https://github.com/mopidy/mopidy/issues?labels=Spotify+backend
 
 **Dependencies:**
 
-- libspotify >= 12, < 13 (libspotify12 package from apt.mopidy.com)
-- pyspotify >= 1.8, < 1.9 (python-spotify package from apt.mopidy.com)
+.. literalinclude:: ../../../requirements/spotify.txt
 
 **Settings:**
 
@@ -29,6 +28,8 @@ https://github.com/mopidy/mopidy/issues?labels=Spotify+backend
 - :attr:`mopidy.settings.SPOTIFY_USERNAME`
 - :attr:`mopidy.settings.SPOTIFY_PASSWORD`
 """
+
+from __future__ import unicode_literals
 
 # flake8: noqa
 from .actor import SpotifyBackend

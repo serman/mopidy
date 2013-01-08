@@ -14,10 +14,12 @@ The backend handles URIs starting with ``dummy:``.
 - None
 """
 
+from __future__ import unicode_literals
+
 import pykka
 
 from mopidy.backends import base
-from mopidy.models import Playlist
+from mopidy.models import Playlist, SearchResult
 
 
 class DummyBackend(pykka.ThreadingActor, base.Backend):
@@ -26,29 +28,29 @@ class DummyBackend(pykka.ThreadingActor, base.Backend):
 
         self.library = DummyLibraryProvider(backend=self)
         self.playback = DummyPlaybackProvider(audio=audio, backend=self)
-        self.stored_playlists = DummyStoredPlaylistsProvider(backend=self)
+        self.playlists = DummyPlaylistsProvider(backend=self)
 
-        self.uri_schemes = [u'dummy']
+        self.uri_schemes = ['dummy']
 
 
 class DummyLibraryProvider(base.BaseLibraryProvider):
     def __init__(self, *args, **kwargs):
         super(DummyLibraryProvider, self).__init__(*args, **kwargs)
         self.dummy_library = []
+        self.dummy_find_exact_result = SearchResult()
+        self.dummy_search_result = SearchResult()
 
     def find_exact(self, **query):
-        return Playlist()
+        return self.dummy_find_exact_result
 
     def lookup(self, uri):
-        matches = filter(lambda t: uri == t.uri, self.dummy_library)
-        if matches:
-            return matches[0]
+        return filter(lambda t: uri == t.uri, self.dummy_library)
 
     def refresh(self, uri=None):
         pass
 
     def search(self, **query):
-        return Playlist()
+        return self.dummy_search_result
 
 
 class DummyPlaybackProvider(base.BasePlaybackProvider):
@@ -78,24 +80,32 @@ class DummyPlaybackProvider(base.BasePlaybackProvider):
         return self._time_position
 
 
-class DummyStoredPlaylistsProvider(base.BaseStoredPlaylistsProvider):
+class DummyPlaylistsProvider(base.BasePlaylistsProvider):
     def create(self, name):
-        playlist = Playlist(name=name)
+        playlist = Playlist(name=name, uri='dummy:%s' % name)
         self._playlists.append(playlist)
         return playlist
 
-    def delete(self, playlist):
-        self._playlists.remove(playlist)
+    def delete(self, uri):
+        playlist = self.lookup(uri)
+        if playlist:
+            self._playlists.remove(playlist)
 
     def lookup(self, uri):
-        return filter(lambda p: p.uri == uri, self._playlists)
+        for playlist in self._playlists:
+            if playlist.uri == uri:
+                return playlist
 
     def refresh(self):
         pass
 
-    def rename(self, playlist, new_name):
-        self._playlists[self._playlists.index(playlist)] = \
-            playlist.copy(name=new_name)
-
     def save(self, playlist):
-        self._playlists.append(playlist)
+        old_playlist = self.lookup(playlist.uri)
+
+        if old_playlist is not None:
+            index = self._playlists.index(old_playlist)
+            self._playlists[index] = playlist
+        else:
+            self._playlists.append(playlist)
+
+        return playlist

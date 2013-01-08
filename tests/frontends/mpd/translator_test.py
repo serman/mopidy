@@ -1,21 +1,23 @@
+from __future__ import unicode_literals
+
 import datetime
 import os
 
 from mopidy import settings
 from mopidy.utils.path import mtime, uri_to_path
 from mopidy.frontends.mpd import translator, protocol
-from mopidy.models import Album, Artist, CpTrack, Playlist, Track
+from mopidy.models import Album, Artist, TlTrack, Playlist, Track
 
 from tests import unittest
 
 
 class TrackMpdFormatTest(unittest.TestCase):
     track = Track(
-        uri=u'a uri',
-        artists=[Artist(name=u'an artist')],
-        name=u'a name',
-        album=Album(name=u'an album', num_tracks=13,
-            artists=[Artist(name=u'an other artist')]),
+        uri='a uri',
+        artists=[Artist(name='an artist')],
+        name='a name',
+        album=Album(name='an album', num_tracks=13,
+            artists=[Artist(name='an other artist')]),
         track_no=7,
         date=datetime.date(1977, 1, 1),
         length=137000,
@@ -44,19 +46,19 @@ class TrackMpdFormatTest(unittest.TestCase):
         result = translator.track_to_mpd_format(Track(), position=1)
         self.assertNotIn(('Pos', 1), result)
 
-    def test_track_to_mpd_format_with_cpid(self):
-        result = translator.track_to_mpd_format(CpTrack(1, Track()))
+    def test_track_to_mpd_format_with_tlid(self):
+        result = translator.track_to_mpd_format(TlTrack(1, Track()))
         self.assertNotIn(('Id', 1), result)
 
-    def test_track_to_mpd_format_with_position_and_cpid(self):
+    def test_track_to_mpd_format_with_position_and_tlid(self):
         result = translator.track_to_mpd_format(
-            CpTrack(2, Track()), position=1)
+            TlTrack(2, Track()), position=1)
         self.assertIn(('Pos', 1), result)
         self.assertIn(('Id', 2), result)
 
     def test_track_to_mpd_format_for_nonempty_track(self):
         result = translator.track_to_mpd_format(
-            CpTrack(122, self.track), position=9)
+            TlTrack(122, self.track), position=9)
         self.assertIn(('file', 'a uri'), result)
         self.assertIn(('Time', 137), result)
         self.assertIn(('Artist', 'an artist'), result)
@@ -94,14 +96,14 @@ class TrackMpdFormatTest(unittest.TestCase):
         self.assertIn(('MUSICBRAINZ_ARTISTID', 'foo'), result)
 
     def test_artists_to_mpd_format(self):
-        artists = [Artist(name=u'ABBA'), Artist(name=u'Beatles')]
+        artists = [Artist(name='ABBA'), Artist(name='Beatles')]
         translated = translator.artists_to_mpd_format(artists)
-        self.assertEqual(translated, u'ABBA, Beatles')
+        self.assertEqual(translated, 'ABBA, Beatles')
 
     def test_artists_to_mpd_format_artist_with_no_name(self):
         artists = [Artist(name=None)]
         translated = translator.artists_to_mpd_format(artists)
-        self.assertEqual(translated, u'')
+        self.assertEqual(translated, '')
 
 
 class PlaylistMpdFormatTest(unittest.TestCase):
@@ -119,6 +121,20 @@ class PlaylistMpdFormatTest(unittest.TestCase):
         self.assertEqual(dict(result[0])['Track'], 2)
 
 
+class QueryFromMpdSearchFormatTest(unittest.TestCase):
+    def test_dates_are_extracted(self):
+        result = translator.query_from_mpd_search_format(
+            'Date "1974-01-02" Date "1975"')
+        self.assertEqual(result['date'][0], '1974-01-02')
+        self.assertEqual(result['date'][1], '1975')
+
+    # TODO Test more mappings
+
+
+class QueryFromMpdListFormatTest(unittest.TestCase):
+    pass  # TODO
+
+
 class TracksToTagCacheFormatTest(unittest.TestCase):
     def setUp(self):
         settings.LOCAL_MUSIC_PATH = '/dir/subdir'
@@ -129,10 +145,9 @@ class TracksToTagCacheFormatTest(unittest.TestCase):
         mtime.undo_fake()
 
     def translate(self, track):
-        folder = settings.LOCAL_MUSIC_PATH
+        base_path = settings.LOCAL_MUSIC_PATH.encode('utf-8')
         result = dict(translator.track_to_mpd_format(track))
-        result['file'] = uri_to_path(result['file'])
-        result['file'] = result['file'][len(folder) + 1:]
+        result['file'] = uri_to_path(result['file'])[len(base_path) + 1:]
         result['key'] = os.path.basename(result['file'])
         result['mtime'] = mtime('')
         return translator.order_mpd_track_info(result.items())
@@ -195,7 +210,7 @@ class TracksToTagCacheFormatTest(unittest.TestCase):
         result = self.consume_headers(result)
         song_list, result = self.consume_song_list(result)
 
-        self.assertEqual(song_list, formated)
+        self.assertEqual(formated, song_list)
         self.assertEqual(len(result), 0)
 
     def test_tag_cache_has_formated_track_with_key_and_mtime(self):
@@ -206,7 +221,7 @@ class TracksToTagCacheFormatTest(unittest.TestCase):
         result = self.consume_headers(result)
         song_list, result = self.consume_song_list(result)
 
-        self.assertEqual(song_list, formated)
+        self.assertEqual(formated, song_list)
         self.assertEqual(len(result), 0)
 
     def test_tag_cache_suports_directories(self):
@@ -222,7 +237,7 @@ class TracksToTagCacheFormatTest(unittest.TestCase):
 
         song_list, result = self.consume_song_list(folder)
         self.assertEqual(len(result), 0)
-        self.assertEqual(song_list, formated)
+        self.assertEqual(formated, song_list)
 
     def test_tag_cache_diretory_header_is_right(self):
         track = Track(uri='file:///dir/subdir/folder/sub/song.mp3')
@@ -254,7 +269,7 @@ class TracksToTagCacheFormatTest(unittest.TestCase):
 
         song_list, result = self.consume_song_list(folder)
         self.assertEqual(len(result), 0)
-        self.assertEqual(song_list, formated)
+        self.assertEqual(formated, song_list)
 
     def test_tag_cache_supports_multiple_tracks(self):
         tracks = [
@@ -271,7 +286,7 @@ class TracksToTagCacheFormatTest(unittest.TestCase):
         result = self.consume_headers(result)
         song_list, result = self.consume_song_list(result)
 
-        self.assertEqual(song_list, formated)
+        self.assertEqual(formated, song_list)
         self.assertEqual(len(result), 0)
 
     def test_tag_cache_supports_multiple_tracks_in_dirs(self):
@@ -290,12 +305,12 @@ class TracksToTagCacheFormatTest(unittest.TestCase):
         folder, result = self.consume_directory(result)
         song_list, song_result = self.consume_song_list(folder)
 
-        self.assertEqual(song_list, formated[1])
+        self.assertEqual(formated[1], song_list)
         self.assertEqual(len(song_result), 0)
 
         song_list, result = self.consume_song_list(result)
         self.assertEqual(len(result), 0)
-        self.assertEqual(song_list, formated[0])
+        self.assertEqual(formated[0], song_list)
 
 
 class TracksToDirectoryTreeTest(unittest.TestCase):

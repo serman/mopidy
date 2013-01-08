@@ -1,22 +1,24 @@
+from __future__ import unicode_literals
+
 import glob
 import logging
 import os
 import shutil
 
 from mopidy import settings
-from mopidy.backends import base
+from mopidy.backends import base, listener
 from mopidy.models import Playlist
 from mopidy.utils import formatting, path
 
 from .translator import parse_m3u
 
 
-logger = logging.getLogger(u'mopidy.backends.local')
+logger = logging.getLogger('mopidy.backends.local')
 
 
-class LocalStoredPlaylistsProvider(base.BaseStoredPlaylistsProvider):
+class LocalPlaylistsProvider(base.BasePlaylistsProvider):
     def __init__(self, *args, **kwargs):
-        super(LocalStoredPlaylistsProvider, self).__init__(*args, **kwargs)
+        super(LocalPlaylistsProvider, self).__init__(*args, **kwargs)
         self._path = settings.LOCAL_PLAYLIST_PATH
         self.refresh()
 
@@ -53,14 +55,15 @@ class LocalStoredPlaylistsProvider(base.BaseStoredPlaylistsProvider):
                 try:
                     # TODO We must use core.library.lookup() to support tracks
                     # from other backends
-                    tracks.append(self.backend.library.lookup(track_uri))
+                    tracks += self.backend.library.lookup(track_uri)
                 except LookupError as ex:
-                    logger.error('Playlist item could not be added: %s', ex)
+                    logger.warning('Playlist item could not be added: %s', ex)
 
             playlist = Playlist(uri=uri, name=name, tracks=tracks)
             playlists.append(playlist)
 
         self.playlists = playlists
+        listener.BackendListener.send('playlists_loaded')
 
     def save(self, playlist):
         assert playlist.uri, 'Cannot save playlist without URI'

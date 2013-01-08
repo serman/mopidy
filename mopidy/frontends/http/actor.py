@@ -1,9 +1,12 @@
+from __future__ import unicode_literals
+
 import logging
+import json
 import os
 
 import pykka
 
-from mopidy import exceptions, settings
+from mopidy import exceptions, models, settings
 from mopidy.core import CoreListener
 
 try:
@@ -14,7 +17,7 @@ try:
 except ImportError as import_error:
     raise exceptions.OptionalDependencyError(import_error)
 
-from . import api, ws
+from . import ws
 
 
 logger = logging.getLogger('mopidy.frontends.http')
@@ -33,8 +36,8 @@ class HttpFrontend(pykka.ThreadingActor, CoreListener):
     def _setup_server(self):
         cherrypy.config.update({
             'engine.autoreload_on': False,
-            'server.socket_host':
-                settings.HTTP_SERVER_HOSTNAME.encode('utf-8'),
+            'server.socket_host': (
+                settings.HTTP_SERVER_HOSTNAME.encode('utf-8')),
             'server.socket_port': settings.HTTP_SERVER_PORT,
         })
 
@@ -43,10 +46,17 @@ class HttpFrontend(pykka.ThreadingActor, CoreListener):
         cherrypy.tools.websocket = WebSocketTool()
 
     def _create_app(self):
+#<<<<<<< HEAD
+#=======
+        root = RootResource()
+        root.mopidy = MopidyResource()
+        root.mopidy.ws = ws.WebSocketResource(self.core)
+#>>>>>>> 358de3b088c6742b855e5880ef9f3f3009131058
 
         if settings.HTTP_SERVER_STATIC_DIR:
             static_dir = settings.HTTP_SERVER_STATIC_DIR
         else:
+#<<<<<<< HEAD
             static_dir = os.path.dirname(__file__) +"/static"
         logger.debug(u'HTTP server will serve "%s" at /static', static_dir)
 
@@ -64,14 +74,30 @@ class HttpFrontend(pykka.ThreadingActor, CoreListener):
 
         config = {
             '/static': {
+#=======
+            static_dir = os.path.join(os.path.dirname(__file__), 'data')
+        logger.debug('HTTP server will serve "%s" at /', static_dir)
+
+        mopidy_dir = os.path.join(os.path.dirname(__file__), 'data')
+        favicon = os.path.join(mopidy_dir, 'favicon.png')
+
+        config = {
+            b'/': {
+#>>>>>>> 358de3b088c6742b855e5880ef9f3f3009131058
                 'tools.staticdir.on': True,
                 'tools.staticdir.index': 'index.html',
                 'tools.staticdir.dir': static_dir,
             },
-            '/api': {
-                'request.dispatch': cherrypy.dispatch.MethodDispatcher(),
+            b'/favicon.ico': {
+                'tools.staticfile.on': True,
+                'tools.staticfile.filename': favicon,
             },
-            '/ws': {
+            b'/mopidy': {
+                'tools.staticdir.on': True,
+                'tools.staticdir.index': 'mopidy.html',
+                'tools.staticdir.dir': mopidy_dir,
+            },
+            b'/mopidy/ws': {
                 'tools.websocket.on': True,
                 'tools.websocket.handler_cls': ws.WebSocketHandler,
             },
@@ -88,19 +114,20 @@ class HttpFrontend(pykka.ThreadingActor, CoreListener):
         app.log.error_log.setLevel(logging.NOTSET)
 
     def on_start(self):
-        logger.debug(u'Starting HTTP server')
+        logger.debug('Starting HTTP server')
         cherrypy.engine.start()
-        logger.info(u'HTTP server running at %s', cherrypy.server.base())
+        logger.info('HTTP server running at %s', cherrypy.server.base())
 
     def on_stop(self):
-        logger.debug(u'Stopping HTTP server')
+        logger.debug('Stopping HTTP server')
         cherrypy.engine.exit()
-        logger.info(u'Stopped HTTP server')
+        logger.info('Stopped HTTP server')
 
-    def playback_state_changed(self, old_state, new_state):
-        cherrypy.engine.publish('websocket-broadcast',
-            TextMessage('playback_state_changed: %s -> %s' % (
-                old_state, new_state)))
+    def on_event(self, name, **data):
+        event = data
+        event['event'] = name
+        message = json.dumps(event, cls=models.ModelJSONEncoder)
+        cherrypy.engine.publish('websocket-broadcast', TextMessage(message))
 
     def playlist_changed(self):
         #TODO
@@ -125,3 +152,8 @@ class RootResource(object):
     def index(self):
         tmpl = self.env.get_template('mobile.html')
         return tmpl.render(user='sss', target='World')
+    pass
+
+
+class MopidyResource(object):
+    pass

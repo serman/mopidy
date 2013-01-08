@@ -1,8 +1,5 @@
-import nose
-import yappi
+from __future__ import unicode_literals
 
-try:
-    yappi.start()
-    nose.main()
-finally:
-    yappi.print_stats()
+import nose
+
+nose.main()

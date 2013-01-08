@@ -19,10 +19,10 @@ Playback provider
     :members:
 
 
-Stored playlists provider
-=========================
+Playlists provider
+==================
 
-.. autoclass:: mopidy.backends.base.BaseStoredPlaylistsProvider
+.. autoclass:: mopidy.backends.base.BasePlaylistsProvider
     :members:
 
 
@@ -33,11 +33,19 @@ Library provider
     :members:
 
 
+Backend listener
+================
+
+.. autoclass:: mopidy.backends.listener.BackendListener
+    :members:
+
+
 .. _backend-implementations:
 
 Backend implementations
 =======================
 
 * :mod:`mopidy.backends.dummy`
-* :mod:`mopidy.backends.spotify`
 * :mod:`mopidy.backends.local`
+* :mod:`mopidy.backends.spotify`
+* :mod:`mopidy.backends.stream`

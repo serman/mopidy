@@ -1,3 +1,5 @@
+from __future__ import unicode_literals
+
 import pykka
 
 
@@ -17,53 +19,66 @@ class CoreListener(object):
         """Helper to allow calling of core listener events"""
         listeners = pykka.ActorRegistry.get_by_class(CoreListener)
         for listener in listeners:
-            getattr(listener.proxy(), event)(**kwargs)
+            listener.proxy().on_event(event, **kwargs)
 
-    def track_playback_paused(self, track, time_position):
+    def on_event(self, event, **kwargs):
+        """
+        Called on all events.
+
+        *MAY* be implemented by actor. By default, this method forwards the
+        event to the specific event methods.
+
+        :param event: the event name
+        :type event: string
+        :param kwargs: any other arguments to the specific event handlers
+        """
+        getattr(self, event)(**kwargs)
+
+    def track_playback_paused(self, tl_track, time_position):
         """
         Called whenever track playback is paused.
 
         *MAY* be implemented by actor.
 
-        :param track: the track that was playing when playback paused
-        :type track: :class:`mopidy.models.Track`
+        :param tl_track: the track that was playing when playback paused
+        :type tl_track: :class:`mopidy.models.TlTrack`
         :param time_position: the time position in milliseconds
         :type time_position: int
         """
         pass
 
-    def track_playback_resumed(self, track, time_position):
+    def track_playback_resumed(self, tl_track, time_position):
         """
         Called whenever track playback is resumed.
 
         *MAY* be implemented by actor.
 
-        :param track: the track that was playing when playback resumed
-        :type track: :class:`mopidy.models.Track`
+        :param tl_track: the track that was playing when playback resumed
+        :type tl_track: :class:`mopidy.models.TlTrack`
         :param time_position: the time position in milliseconds
         :type time_position: int
         """
         pass
 
-    def track_playback_started(self, track):
+    def track_playback_started(self, tl_track):
         """
         Called whenever a new track starts playing.
 
         *MAY* be implemented by actor.
 
-        :param track: the track that just started playing
-        :type track: :class:`mopidy.models.Track`
+        :param tl_track: the track that just started playing
+        :type tl_track: :class:`mopidy.models.TlTrack`
         """
         pass
 
-    def track_playback_ended(self, track, time_position):
+    def track_playback_ended(self, tl_track, time_position):
         """
         Called whenever playback of a track ends.
 
         *MAY* be implemented by actor.
 
-        :param track: the track that was played before playback stopped
-        :type track: :class:`mopidy.models.Track`
+        :param tl_track: the track that was played before playback stopped
+        :type tl_track: :class:`mopidy.models.TlTrack`
         :param time_position: the time position in milliseconds
         :type time_position: int
         """
@@ -82,11 +97,30 @@ class CoreListener(object):
         """
         pass
 
-    def playlist_changed(self):
+    def tracklist_changed(self):
+        """
+        Called whenever the tracklist is changed.
+
+        *MAY* be implemented by actor.
+        """
+        pass
+
+    def playlists_loaded(self):
+        """
+        Called when playlists are loaded or refreshed.
+
+        *MAY* be implemented by actor.
+        """
+        pass
+
+    def playlist_changed(self, playlist):
         """
         Called whenever a playlist is changed.
 
         *MAY* be implemented by actor.
+
+        :param playlist: the changed playlist
+        :type playlist: :class:`mopidy.models.Playlist`
         """
         pass
 

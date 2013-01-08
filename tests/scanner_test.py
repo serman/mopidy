@@ -1,4 +1,4 @@
-from datetime import date
+from __future__ import unicode_literals
 
 from mopidy.scanner import Scanner, translator
 from mopidy.models import Track, Artist, Album
@@ -17,14 +17,14 @@ class TranslatorTest(unittest.TestCase):
     def setUp(self):
         self.data = {
             'uri': 'uri',
-            'album': u'albumname',
+            'album': 'albumname',
             'track-number': 1,
-            'artist': u'name',
+            'artist': 'name',
             'album-artist': 'albumartistname',
-            'title': u'trackname',
+            'title': 'trackname',
             'track-count': 2,
             'date': FakeGstDate(2006, 1, 1,),
-            'container-format': u'ID3 tag',
+            'container-format': 'ID3 tag',
             'duration': 4531,
             'musicbrainz-trackid': 'mbtrackid',
             'musicbrainz-albumid': 'mbalbumid',
@@ -32,36 +32,40 @@ class TranslatorTest(unittest.TestCase):
             'musicbrainz-albumartistid': 'mbalbumartistid',
         }
 
+        # NOTE: kwargs are explicitly made bytestrings to work on Python
+        # 2.6.0/2.6.1. See https://github.com/mopidy/mopidy/issues/302 for
+        # details.
+
         self.album = {
-            'name': 'albumname',
-            'num_tracks': 2,
-            'musicbrainz_id': 'mbalbumid',
+            b'name': 'albumname',
+            b'num_tracks': 2,
+            b'musicbrainz_id': 'mbalbumid',
         }
 
         self.artist = {
-            'name': 'name',
-            'musicbrainz_id': 'mbartistid',
+            b'name': 'name',
+            b'musicbrainz_id': 'mbartistid',
         }
 
         self.albumartist = {
-            'name': 'albumartistname',
-            'musicbrainz_id': 'mbalbumartistid',
+            b'name': 'albumartistname',
+            b'musicbrainz_id': 'mbalbumartistid',
         }
 
         self.track = {
-            'uri': 'uri',
-            'name': 'trackname',
-            'date': date(2006, 1, 1),
-            'track_no': 1,
-            'length': 4531,
-            'musicbrainz_id': 'mbtrackid',
+            b'uri': 'uri',
+            b'name': 'trackname',
+            b'date': '2006-01-01',
+            b'track_no': 1,
+            b'length': 4531,
+            b'musicbrainz_id': 'mbtrackid',
         }
 
     def build_track(self):
         if self.albumartist:
-            self.album['artists'] = [Artist(**self.albumartist)]
-        self.track['album'] = Album(**self.album)
-        self.track['artists'] = [Artist(**self.artist)]
+            self.album[b'artists'] = [Artist(**self.albumartist)]
+        self.track[b'album'] = Album(**self.album)
+        self.track[b'artists'] = [Artist(**self.artist)]
         return Track(**self.track)
 
     def check(self):
@@ -124,6 +128,11 @@ class TranslatorTest(unittest.TestCase):
 
     def test_missing_date(self):
         del self.data['date']
+        del self.track['date']
+        self.check()
+
+    def test_invalid_date(self):
+        self.data['date'] = FakeGstDate(65535, 1, 1)
         del self.track['date']
         self.check()
 

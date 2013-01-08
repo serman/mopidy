@@ -1,4 +1,6 @@
-from collections import namedtuple
+from __future__ import unicode_literals
+
+import json
 
 
 class ImmutableObject(object):
@@ -12,9 +14,9 @@ class ImmutableObject(object):
 
     def __init__(self, *args, **kwargs):
         for key, value in kwargs.items():
-            if not hasattr(self, key):
+            if not hasattr(self, key) or callable(getattr(self, key)):
                 raise TypeError(
-                    u"__init__() got an unexpected keyword argument '%s'" %
+                    '__init__() got an unexpected keyword argument "%s"' %
                     key)
             self.__dict__[key] = value
 
@@ -64,20 +66,23 @@ class ImmutableObject(object):
         :type values: dict
         :rtype: new instance of the model being copied
         """
+        # NOTE kwargs dict keys must be bytestrings to work on Python < 2.6.5
+        # See https://github.com/mopidy/mopidy/issues/302 for details
         data = {}
         for key in self.__dict__.keys():
             public_key = key.lstrip('_')
-            data[public_key] = values.pop(public_key, self.__dict__[key])
+            data[str(public_key)] = values.pop(public_key, self.__dict__[key])
         for key in values.keys():
             if hasattr(self, key):
-                data[key] = values.pop(key)
+                data[str(key)] = values.pop(key)
         if values:
             raise TypeError(
-                u"copy() got an unexpected keyword argument '%s'" % key)
+                'copy() got an unexpected keyword argument "%s"' % key)
         return self.__class__(**data)
 
     def serialize(self):
         data = {}
+        data['__model__'] = self.__class__.__name__
         for key in self.__dict__.keys():
             public_key = key.lstrip('_')
             value = self.__dict__[key]
@@ -88,6 +93,44 @@ class ImmutableObject(object):
             if value:
                 data[public_key] = value
         return data
+
+
+class ModelJSONEncoder(json.JSONEncoder):
+    """
+    Automatically serialize Mopidy models to JSON.
+
+    Usage::
+
+        >>> import json
+        >>> json.dumps({'a_track': Track(name='name')}, cls=ModelJSONEncoder)
+        '{"a_track": {"__model__": "Track", "name": "name"}}'
+
+    """
+    def default(self, obj):
+        if isinstance(obj, ImmutableObject):
+            return obj.serialize()
+        return json.JSONEncoder.default(self, obj)
+
+
+def model_json_decoder(dct):
+    """
+    Automatically deserialize Mopidy models from JSON.
+
+    Usage::
+
+        >>> import json
+        >>> json.loads(
+        ...     '{"a_track": {"__model__": "Track", "name": "name"}}',
+        ...     object_hook=model_json_decoder)
+        {u'a_track': Track(artists=[], name=u'name')}
+
+    """
+    if '__model__' in dct:
+        model_name = dct.pop('__model__')
+        cls = globals().get(model_name, None)
+        if issubclass(cls, ImmutableObject):
+            return cls(**dct)
+    return dct
 
 
 class Artist(ImmutableObject):
@@ -145,11 +188,10 @@ class Album(ImmutableObject):
     musicbrainz_id = None
 
     def __init__(self, *args, **kwargs):
-        self.__dict__['artists'] = frozenset(kwargs.pop('artists', []))
+        # NOTE kwargs dict keys must be bytestrings to work on Python < 2.6.5
+        # See https://github.com/mopidy/mopidy/issues/302 for details
+        self.__dict__[b'artists'] = frozenset(kwargs.pop('artists', []))
         super(Album, self).__init__(*args, **kwargs)
-
-
-CpTrack = namedtuple('CpTrack', ['cpid', 'track'])
 
 
 class Track(ImmutableObject):
@@ -202,8 +244,50 @@ class Track(ImmutableObject):
     musicbrainz_id = None
 
     def __init__(self, *args, **kwargs):
-        self.__dict__['artists'] = frozenset(kwargs.pop('artists', []))
+        # NOTE kwargs dict keys must be bytestrings to work on Python < 2.6.5
+        # See https://github.com/mopidy/mopidy/issues/302 for details
+        self.__dict__[b'artists'] = frozenset(kwargs.pop('artists', []))
         super(Track, self).__init__(*args, **kwargs)
+
+
+class TlTrack(ImmutableObject):
+    """
+    A tracklist track. Wraps a regular track and it's tracklist ID.
+
+    The use of :class:`TlTrack` allows the same track to appear multiple times
+    in the tracklist.
+
+    This class also accepts it's parameters as positional arguments. Both
+    arguments must be provided, and they must appear in the order they are
+    listed here.
+
+    This class also supports iteration, so your extract its values like this::
+
+        (tlid, track) = tl_track
+
+    :param tlid: tracklist ID
+    :type tlid: int
+    :param track: the track
+    :type track: :class:`Track`
+    """
+
+    #: The tracklist ID. Read-only.
+    tlid = None
+
+    #: The track. Read-only.
+    track = None
+
+    def __init__(self, *args, **kwargs):
+        # NOTE kwargs dict keys must be bytestrings to work on Python < 2.6.5
+        # See https://github.com/mopidy/mopidy/issues/302 for details
+        if len(args) == 2 and len(kwargs) == 0:
+            kwargs[b'tlid'] = args[0]
+            kwargs[b'track'] = args[1]
+            args = []
+        super(TlTrack, self).__init__(*args, **kwargs)
+
+    def __iter__(self):
+        return iter([self.tlid, self.track])
 
 
 class Playlist(ImmutableObject):
@@ -214,7 +298,7 @@ class Playlist(ImmutableObject):
     :type name: string
     :param tracks: playlist's tracks
     :type tracks: list of :class:`Track` elements
-    :param last_modified: playlist's modification time
+    :param last_modified: playlist's modification time in UTC
     :type last_modified: :class:`datetime.datetime`
     """
 
@@ -227,13 +311,15 @@ class Playlist(ImmutableObject):
     #: The playlist's tracks. Read-only.
     tracks = tuple()
 
-    #: The playlist modification time. Read-only.
+    #: The playlist modification time in UTC. Read-only.
     #:
     #: :class:`datetime.datetime`, or :class:`None` if unknown.
     last_modified = None
 
     def __init__(self, *args, **kwargs):
-        self.__dict__['tracks'] = tuple(kwargs.pop('tracks', []))
+        # NOTE kwargs dict keys must be bytestrings to work on Python < 2.6.5
+        # See https://github.com/mopidy/mopidy/issues/302 for details
+        self.__dict__[b'tracks'] = tuple(kwargs.pop('tracks', []))
         super(Playlist, self).__init__(*args, **kwargs)
 
     # TODO: def insert(self, pos, track): ... ?
@@ -242,3 +328,36 @@ class Playlist(ImmutableObject):
     def length(self):
         """The number of tracks in the playlist. Read-only."""
         return len(self.tracks)
+
+
+class SearchResult(ImmutableObject):
+    """
+    :param uri: search result URI
+    :type uri: string
+    :param tracks: matching tracks
+    :type tracks: list of :class:`Track` elements
+    :param artists: matching artists
+    :type artists: list of :class:`Artist` elements
+    :param albums: matching albums
+    :type albums: list of :class:`Album` elements
+    """
+
+    # The search result URI. Read-only.
+    uri = None
+
+    # The tracks matching the search query. Read-only.
+    tracks = tuple()
+
+    # The artists matching the search query. Read-only.
+    artists = tuple()
+
+    # The albums matching the search query. Read-only.
+    albums = tuple()
+
+    def __init__(self, *args, **kwargs):
+        # NOTE kwargs dict keys must be bytestrings to work on Python < 2.6.5
+        # See https://github.com/mopidy/mopidy/issues/302 for details
+        self.__dict__[b'tracks'] = tuple(kwargs.pop('tracks', []))
+        self.__dict__[b'artists'] = tuple(kwargs.pop('artists', []))
+        self.__dict__[b'albums'] = tuple(kwargs.pop('albums', []))
+        super(SearchResult, self).__init__(*args, **kwargs)

@@ -10,17 +10,19 @@ implement our own MPD server which is compatible with the numerous existing
 `MPD clients <http://mpd.wikia.com/wiki/Clients>`_.
 """
 
+from __future__ import unicode_literals
+
 from collections import namedtuple
 import re
 
 #: The MPD protocol uses UTF-8 for encoding all data.
-ENCODING = u'UTF-8'
+ENCODING = 'UTF-8'
 
 #: The MPD protocol uses ``\n`` as line terminator.
-LINE_TERMINATOR = u'\n'
+LINE_TERMINATOR = '\n'
 
-#: The MPD protocol version is 0.16.0.
-VERSION = u'0.16.0'
+#: The MPD protocol version is 0.17.0.
+VERSION = '0.17.0'
 
 MpdCommand = namedtuple('MpdCommand', ['name', 'auth_required'])
 
@@ -54,10 +56,16 @@ def handle_request(pattern, auth_required=True):
         if match is not None:
             mpd_commands.add(
                 MpdCommand(name=match.group(), auth_required=auth_required))
-        if pattern in request_handlers:
-            raise ValueError(u'Tried to redefine handler for %s with %s' % (
+        # NOTE Make pattern a bytestring to get bytestring keys in the dict
+        # returned from matches.groupdict(), which is again used as a **kwargs
+        # dict. This is needed to work on Python < 2.6.5.
+        # See https://github.com/mopidy/mopidy/issues/302 for details.
+        bytestring_pattern = pattern.encode('utf-8')
+        compiled_pattern = re.compile(bytestring_pattern, flags=re.UNICODE)
+        if compiled_pattern in request_handlers:
+            raise ValueError('Tried to redefine handler for %s with %s' % (
                 pattern, func))
-        request_handlers[pattern] = func
+        request_handlers[compiled_pattern] = func
         func.__doc__ = '    - *Pattern:* ``%s``\n\n%s' % (
             pattern, func.__doc__ or '')
         return func
@@ -71,6 +79,7 @@ def load_protocol_modules():
     """
     # pylint: disable = W0612
     from . import (  # noqa
-        audio_output, command_list, connection, current_playlist, empty,
-        music_db, playback, reflection, status, stickers, stored_playlists)
+        audio_output, channels, command_list, connection, current_playlist,
+        empty, music_db, playback, reflection, status, stickers,
+        stored_playlists)
     # pylint: enable = W0612
