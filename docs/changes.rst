@@ -20,7 +20,7 @@ v0.12.0 (in development)
 
 **Audio sub-system**
 
-- Improve selection of mixer tracks for volume control. (Fixes: :issuse:`307`)
+- Improve selection of mixer tracks for volume control. (Fixes: :issue:`307`)
 
 - EOT (end of track) and EOS (end of stream) handling has finally been fixed.
   Problem with the old code was that we simply used EOS for everything, and let
@@ -53,11 +53,9 @@ v0.12.0 (in development)
 **Stream backend**
 
 We've added a new backend for playing audio streams, the :mod:`stream backend
-<mopidy.backends.stream>`. It is activated by default.
-
-The stream backend supports the intersection of what your GStreamer
-installation supports and what protocols are included in the
-:attr:`mopidy.settings.STREAM_PROTOCOLS` settings.
+<mopidy.backends.stream>`. It is activated by default. The stream backend
+supports the intersection of what your GStreamer installation supports and what
+protocols are included in the :attr:`mopidy.settings.STREAM_PROTOCOLS` setting.
 
 Current limitations:
 
@@ -66,6 +64,24 @@ Current limitations:
 - Playlists are not parsed, so you can't play e.g. a M3U or PLS file which
   contains stream URIs. You need to extract the stream URL from the playlist
   yourself. See :issue:`303` for progress on this.
+
+**Core API**
+
+- :meth:`mopidy.core.PlaylistsController.get_playlists` now accepts an argument
+  ``include_tracks``. This defaults to :class:`True`, which has the same old
+  behavior. If set to :class:`False`, the tracks are stripped from the
+  playlists before they are returned. This can be used to limit the amount of
+  data returned if the response is to be passed out of the application, e.g. to
+  a web client. (Fixes: :issue:`297`)
+
+**Models**
+
+- Add :attr:`mopidy.models.Album.images` field for including album art URIs.
+  (Partly fixes :issue:`263`)
+
+- Add :attr:`mopidy.models.Track.disc_no` field. (Partly fixes: :issue:`286`)
+
+- Add :attr:`mopidy.models.Album.num_discs` field. (Partly fixes: :issue:`286`)
 
 
 v0.11.1 (2012-12-24)
