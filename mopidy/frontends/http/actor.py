@@ -9,11 +9,15 @@ import pykka
 from mopidy import exceptions, models, settings
 from mopidy.core import CoreListener
 
+
 try:
     import cherrypy
     from ws4py.messaging import TextMessage
     from ws4py.server.cherrypyserver import WebSocketPlugin, WebSocketTool
     from jinja2 import Environment, FileSystemLoader
+    import api
+    from boombox.bbtracklist import bbTracklistController
+    from boombox.bbconst import bbContext
 except ImportError as import_error:
     raise exceptions.OptionalDependencyError(import_error)
 
@@ -31,7 +35,9 @@ class HttpFrontend(pykka.ThreadingActor, CoreListener):
         self._setup_websocket_plugin()
         app = self._create_app()
         self._setup_logging(app)
-        self.core.playback.consume=False;
+        
+#mis opciones        
+        self.core.playback.consume=True;
 
     def _setup_server(self):
         cherrypy.config.update({
@@ -46,44 +52,35 @@ class HttpFrontend(pykka.ThreadingActor, CoreListener):
         cherrypy.tools.websocket = WebSocketTool()
 
     def _create_app(self):
-#<<<<<<< HEAD
-#=======
-        root = RootResource()
-        root.mopidy = MopidyResource()
-        root.mopidy.ws = ws.WebSocketResource(self.core)
-#>>>>>>> 358de3b088c6742b855e5880ef9f3f3009131058
 
+        self.bbTracklist=bbTracklistController(self.core)
         if settings.HTTP_SERVER_STATIC_DIR:
             static_dir = settings.HTTP_SERVER_STATIC_DIR
         else:
-#<<<<<<< HEAD
-            static_dir = os.path.dirname(__file__) +"/static"
-        logger.debug(u'HTTP server will serve "%s" at /static', static_dir)
+            static_dir = os.path.join(os.path.dirname(__file__), 'data')
+        logger.debug('HTTP server will serve "%s" at /', static_dir)
 
+#http template dir
         if settings.HTTP_SERVER_TEMPLATE_DIR:
             template_dir = settings.HTTP_SERVER_TEMPLATE_DIR
         else:
             template_dir = os.path.dirname(__file__) +"/templates"
         logger.debug(u'HTTP server will serve templates at "%s" ', template_dir)
-
         env = Environment(loader=FileSystemLoader(template_dir))
-        
         root = RootResource(self.core,env)
-        root.api = api.ApiResource(self.core)
-        root.ws = ws.WebSocketResource()
+        #root = RootResource()
+        root.mopidy = MopidyResource()
+        root.mopidy.ws = ws.WebSocketResource(self.core)
+        root.api = api.ApiResource(bbContext(self.bbTracklist,self.core))
 
-        config = {
-            '/static': {
-#=======
-            static_dir = os.path.join(os.path.dirname(__file__), 'data')
-        logger.debug('HTTP server will serve "%s" at /', static_dir)
-
+        
+        
+        
         mopidy_dir = os.path.join(os.path.dirname(__file__), 'data')
         favicon = os.path.join(mopidy_dir, 'favicon.png')
 
         config = {
-            b'/': {
-#>>>>>>> 358de3b088c6742b855e5880ef9f3f3009131058
+            b'/static': {
                 'tools.staticdir.on': True,
                 'tools.staticdir.index': 'index.html',
                 'tools.staticdir.dir': static_dir,
@@ -104,6 +101,7 @@ class HttpFrontend(pykka.ThreadingActor, CoreListener):
         }
 
         return cherrypy.tree.mount(root, '/', config)
+
 
     def _setup_logging(self, app):
         cherrypy.log.access_log.setLevel(logging.DEBUG)
@@ -126,8 +124,23 @@ class HttpFrontend(pykka.ThreadingActor, CoreListener):
     def on_event(self, name, **data):
         event = data
         event['event'] = name
+        logger.info('-------- evento -- ' + name)
+       # if(name=="track_playback_ended"):
+           # self.track_playback_ended(**data)
+
         message = json.dumps(event, cls=models.ModelJSONEncoder)
         cherrypy.engine.publish('websocket-broadcast', TextMessage(message))
+        getattr(self, event)(**data)
+   # def track_playback_ended(self,tl_track,time_position):
+    #    logger.info('-------------- TERMINA PALYBACK-------')
+      #  self.bbTracklist.remove(tl_track.tlid)
+        #track=Conseguir siguiente
+        #self.core.tracklist.add(track)
+        i#f(self.core.playback.get_state().get()!=PlaybackState.PLAYING):
+        #    self.core.playback.play().get()
+        #self.bbTracklist
+     #   logger.info('playback_end')
+
 
     def playlist_changed(self):
         #TODO
@@ -144,6 +157,7 @@ class HttpFrontend(pykka.ThreadingActor, CoreListener):
 
 
 class RootResource(object):
+#    pass
     def __init__(self, core,env):
         self.core = core
         self.env=env
@@ -152,8 +166,9 @@ class RootResource(object):
     def index(self):
         tmpl = self.env.get_template('mobile.html')
         return tmpl.render(user='sss', target='World')
-    pass
 
 
 class MopidyResource(object):
     pass
+    
+    

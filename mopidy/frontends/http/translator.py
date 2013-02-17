@@ -3,7 +3,7 @@ import re
 
 from mopidy import settings
 from mopidy.frontends.mpd import protocol
-from mopidy.models import CpTrack
+from mopidy.models import TlTrack
 from mopidy.utils.path import mtime as get_mtime, uri_to_path, split_path
 
 
@@ -16,7 +16,7 @@ def track_to_dict_format(track, position=None):
     :param position: track's position in playlist
     :type position: integer
     """
-    if isinstance(track, CpTrack):
+    if isinstance(track, TlTrack):
         (cpid, track) = track
     else:
         (cpid, track) = (None, track)
@@ -106,6 +106,7 @@ def playlist_to_dict_format(playlist, *args, **kwargs):
 
     Arguments as for :func:`tracks_to_mpd_format`, except the first one.
     """
-    return tracks_to_dict_format(playlist.tracks, *args, **kwargs)
+    return playlist[1].tracks
+    #return tracks_to_dict_format(playlist[1], *args, **kwargs)
 
 
