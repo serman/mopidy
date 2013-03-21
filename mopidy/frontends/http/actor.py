@@ -18,6 +18,7 @@ try:
     import api
     from boombox.bbtracklist import bbTracklistController
     from boombox.bbconst import bbContext
+    from boombox.secure import sessionManager
 except ImportError as import_error:
     raise exceptions.OptionalDependencyError(import_error)
 
@@ -45,6 +46,7 @@ class HttpFrontend(pykka.ThreadingActor, CoreListener):
             'server.socket_host': (
                 settings.HTTP_SERVER_HOSTNAME.encode('utf-8')),
             'server.socket_port': settings.HTTP_SERVER_PORT,
+
         })
 
     def _setup_websocket_plugin(self):
@@ -60,6 +62,9 @@ class HttpFrontend(pykka.ThreadingActor, CoreListener):
             static_dir = os.path.join(os.path.dirname(__file__), 'data')
         logger.debug('HTTP server will serve "%s" at /', static_dir)
 
+
+        cookies_dir = os.path.join(os.path.dirname(__file__), 'cookies')
+
 #http template dir
         if settings.HTTP_SERVER_TEMPLATE_DIR:
             template_dir = settings.HTTP_SERVER_TEMPLATE_DIR
@@ -72,14 +77,18 @@ class HttpFrontend(pykka.ThreadingActor, CoreListener):
         root.mopidy = MopidyResource()
         root.mopidy.ws = ws.WebSocketResource(self.core)
         root.api = api.ApiResource(bbContext(self.bbTracklist,self.core))
-
-        
         
         
         mopidy_dir = os.path.join(os.path.dirname(__file__), 'data')
         favicon = os.path.join(mopidy_dir, 'favicon.png')
 
         config = {
+            b'/':{
+                'tools.sessions.on': True,
+                'tools.sessions.storage_type' : "file",
+                'tools.sessions.storage_path' : cookies_dir,
+                'tools.sessions.timeout' : 600
+            },
             b'/static': {
                 'tools.staticdir.on': True,
                 'tools.staticdir.index': 'index.html',
@@ -144,7 +153,7 @@ class HttpFrontend(pykka.ThreadingActor, CoreListener):
         pass
     
     def options_changed(self):
-        #TODO
+        #TODO   
         pass
     
     def volume_changed(self):
@@ -158,11 +167,14 @@ class RootResource(object):
     def __init__(self, core,env):
         self.core = core
         self.env=env
+        #cherrypy.sessions.delete()
         
     @cherrypy.expose
     def index(self):
         tmpl = self.env.get_template('mobile.html')
-        return tmpl.render(user='sss', target='World')
+        sessionManager()
+        #logger.info("sesiones: " + str(len(cherrypy.session.cache)))
+        return tmpl.render(user=cherrypy.session.get('user') , credit=cherrypy.session.get('songsLeft'))
 
 
 class MopidyResource(object):

@@ -54,7 +54,7 @@ class bbTracklistController(object):
     """Length of the tracklist."""
 
 
-    def add(self, track, at_position=None, msg="",name=""):
+    def add(self, track, at_position=None, m_msg="",m_name="anonym"):
         """
         Add the track or list of tracks to the tracklist.
 
@@ -71,7 +71,7 @@ class bbTracklistController(object):
         :rtype: list of :class:`mopidy.models.TlTrack`
         """
 
-        iter_track = bbTrack(track,self._next_tlid, " a msg", "perry") #bbTrack(self, mtrack , mid, mmsg="", mname="" ):
+        iter_track = bbTrack(track,self._next_tlid, " a msg", m_name) #bbTrack(self, mtrack , mid, mmsg="", mname="" ):
 
         if at_position is not None:
             self._bb_tracks.insert(at_position, iter_track)
@@ -84,6 +84,7 @@ class bbTracklistController(object):
             #self._increase_version()
             pass
         self._next_tlid += 1
+        self.updateOrder()
         return iter_track
 
     def vote(self,bbTrack,nvotes):

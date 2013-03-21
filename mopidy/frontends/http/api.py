@@ -3,10 +3,11 @@ from mopidy import models
 import translator
 import logging
 import json
+import datetime
 from boombox import bbmodels
 from mopidy.audio import PlaybackState
 from boombox.bbconst import bbContext
-
+from boombox.secure import *
 from mopidy.frontends.http.exceptions import (
  HttpNoExistError)
 try:
@@ -45,7 +46,10 @@ class ApiResource(object):
     @cherrypy.tools.json_out()
     @cherrypy.expose
     def search(self,search_for,search_what=""):
-        results = self.core.library.search( artist=[search_for] ).get()
+        if(search_what==""):
+            results = self.core.library.search( any=[search_for] ).get()
+        elif(search_what=="artist"):
+            results = self.core.library.search( artist=[search_for] ).get()
         tracks = []
 #        logger.info(results)
         #for track in results.tracks:
@@ -54,17 +58,38 @@ class ApiResource(object):
         
         return json.dumps({'searchResult': results}, cls=models.ModelJSONEncoder)
             #'searchResult':tracks
-        
+    
     @cherrypy.tools.json_out()
     @cherrypy.expose
-    def addSong(self, jsonTrack=""): #jsonTrack es la URI
+    def findExact(self,uri):        
+        results = self.core.library.lookup( uri ).get()
+#        logger.info(results)
+        #for track in results.tracks:
+        #    track = track.serialize()
+        #    tracks.append(track)
+        
+        return json.dumps({'searchResult': results}, cls=models.ModelJSONEncoder)
+            #'searchResult':tracks
+    
+#Esta funcion de la api recibe una nueva cancion y la aniade a la playlist
+#Comprueba permisos y decrece el contador de canciones disponibles del usuario
+    @cherrypy.tools.json_out()
+    @cherrypy.expose
+    def addSong(self, jsonTrack="",name="",msg=""): #jsonTrack es la URI
+        logger.info( "name......." + name )
+        if(canIAddSong()==False):
+            return json.dumps({'error': "TooManySongs"})
+        if(canAddThis()==False):
+            return json.dumps({'error': "AlreadyThere"})
+            
         if(jsonTrack==""):
             logger.info( "no hay cancion")
+            return json.dumps({'error': "NoSong"})
         else:
             mtrack = self.core.library.lookup(jsonTrack).get()
             #mtrack=json.loads(jsonTrack,object_hook=models.model_json_decoder)
             if mtrack:
-                myBBTrack=self.bbTracklist.add(mtrack)
+                myBBTrack=self.bbTracklist.add(mtrack,m_msg=msg,m_name=name)
                 self.bbTracklist.playNext()
                 # if( self.core.tracklist.get_length().get() == 0 ): #Si no hay ninguna cancion en el TL "oficial"
                 #     tl_tracks=self.core.tracklist.add(mtrack).get() #Aniadimos una
@@ -75,8 +100,11 @@ class ApiResource(object):
                 #     self.core.playback.play().get()
                 #     ctrac =self.core.playback.get_current_track().get().length
                 #     self.core.playback.seek(ctrac-15000).get()
+                songLeft=computeSongsLeft()
+            else:
+                return json.dumps({'error': "NotFound"})
 
-        return json.dumps({'ok': "ok"})
+        return json.dumps({'ok': "ok","credit":songLeft})
 
     @cherrypy.tools.json_out()
     @cherrypy.expose
@@ -86,7 +114,8 @@ class ApiResource(object):
             #'current_cp_track': self.core.playback.current_cp_track,
             }
         cp_tracks = futures['cp_tracks']
-        cp_tracks.insert(0,self.bbTracklist.playingSong)
+        if(self.core.playback.get_state().get()==PlaybackState.PLAYING):
+            cp_tracks.insert(0,self.bbTracklist.playingSong)
         return json.dumps({'tracks': cp_tracks}, cls=bbmodels.ModelJSONEncoder)
 
     @cherrypy.tools.json_out()
@@ -97,120 +126,50 @@ class ApiResource(object):
 
         """
         song_id=int(song_id)
-        votes=int(votes)
-        bbTrack1=self.bbTracklist.getTrackById(song_id)
-        self.bbTracklist.vote(bbTrack1,votes)
+        if(canIVoteThis(song_id)==True):            
+            votes=int(votes)
+            bbTrack1=self.bbTracklist.getTrackById(song_id)
+            self.bbTracklist.vote(bbTrack1,votes)
+            cherrypy.session['songsVoted'].append(song_id)
+            return json.dumps({'ok': song_id})    
+        else:
+            return json.dumps({'error': "You already voted this one"})    
 
-# class PlayerResource(object):
-#     exposed = True
-#
-#     def __init__(self, core):
-#         self.core = core
-#
-#     @cherrypy.tools.json_out()
-#     @cherrypy.expose
-#     def index(self):
-#         futures = {
-#             'state': self.core.playback.state,
-#             'current_track': self.core.playback.current_track,
-#             'consume': self.core.playback.consume,
-#             'random': self.core.playback.random,
-#             'repeat': self.core.playback.repeat,
-#             'single': self.core.playback.single,
-#             'volume': self.core.playback.volume,
-#             'time_position': self.core.playback.time_position,
-#         }
-#         current_track = futures['current_track'].get()
-#         if current_track:
-#             current_track = current_track.serialize()
-#         return {
-#             'properties': {
-#                 'state': futures['state'].get(),
-#                 'currentTrack': current_track,
-#                 'consume': futures['consume'].get(),
-#                 'random': futures['random'].get(),
-#                 'repeat': futures['repeat'].get(),
-#                 'single': futures['single'].get(),
-#                 'volume': futures['volume'].get(),
-#                 'timePosition': futures['time_position'].get(),
-#             }
-#         }
-#
-#     @cherrypy.tools.json_out()
-#     @cherrypy.expose
-#     def index2(self,prop,value):
-#         if prop=='state':
-#             if value=="playing":
-#                 self.core.playback.play()
-#             if value=="stopped":
-#                 self.core.playback.stop()
-#             if value=="paused":
-#                 self.core.playback.pause()
-#
-#
-#         if prop=='consume':
-#             self.core.playback.consume=value
-#         if prop=='random' :
-#             self.core.playback.random=value
-#         if prop=='single' :
-#             self.core.playback.single=value
-#         if prop=='volume':
-#             self.core.playback.volume=value
-#         if prop=='repeat' :
-#             self.core.playback.repeat=value
-#         if prop=='time_position':
-#             self.core.playback.time_position=value
-#
-#
-# class TrackListResource(object):
-#     exposed = True
-#
-#     def __init__(self, core):
-#         self.core = core
-#
-#     @cherrypy.tools.json_out()
-#     def GET(self):
-#         futures = {
-#             'cp_tracks': self.core.current_playlist.cp_tracks,
-#             'current_cp_track': self.core.playback.current_cp_track,
-#         }
-#         cp_tracks = futures['cp_tracks'].get()
-#         tracks = []
-#         for cp_track in cp_tracks:
-#             track = cp_track.track.serialize()
-#             track['cpid'] = cp_track.cpid
-#             tracks.append(track)
-#         current_cp_track = futures['current_cp_track'].get()
-#         return {
-#             'currentTrackCpid': current_cp_track and current_cp_track.cpid,
-#             'tracks': tracks,
-#         }
-#
-#     def PUT(self, uri, songpos=None):
-#         print "uri es " + uri
-#         track = self.core.library.lookup(uri).get()
-#         if track is None:
-#             raise HttpNoExistError(u'No such song', command=u'addid')
-#         if songpos is None:
-#             cp_track = self.core.current_playlist.add( track).get()
-#         else:
-#             cp_track = self.core.current_playlist.add( track, at_position=songpos).get()
-#         print cp_track
-#         #self.core.playback.play(cp_track).get()
-#         return {'Id': cp_track.cpid}
-#
-#     @cherrypy.expose
-#     def move (self, cp_id, new_position):
-#         try:
-#             cp_id=int(cp_id)
-#             new_position=int(new_position)
-#         except ValueError:
-#             raise HttpWrongParameterError
-#
-#         trackToMove=self.core.current_playlist.get(cpid=cp_id).get()
-#         if trackToMove is None:
-#             raise HttpNoExistError(u'No such song', command=u'get(cpid)')
-#         trackIndex=self.core.current_playlist.index(trackToMove).get()
-#         self.core.current_playlist.move(trackIndex,trackIndex,new_position)
-#
 
+####### ------- FUNCIONES REFERIDAS AL PERFIL DE USUARIO Y LA SEGURIDAD #####
+    @cherrypy.tools.json_out()
+    @cherrypy.expose
+    def setUserName(self, userName):
+        cherrypy.session['user'] = userName
+        return json.dumps({'user':userName})
+    
+    @cherrypy.tools.json_out()
+    @cherrypy.expose
+    def getInfo(self,what):
+        if(what in {"user","songsLeft"}):            
+            return json.dumps({'result':cherrypy.session.get(what)})
+        else:
+            return json.dumps({'error':"forbidden"})
+
+    @cherrypy.tools.json_out()
+    @cherrypy.expose
+    def getStatus(self):
+        updateCredits()
+        if( cherrypy.session.get('timeNextSong')==0 ):
+            printedtime=0
+        else:
+            printedtime=str(round((cherrypy.session.get('timeNextSong')-datetime.datetime.now()).seconds/60))
+            
+        
+        
+        
+        return json.dumps({'user':cherrypy.session.get('user'),
+                           'songsLeft':cherrypy.session.get('songsLeft'),
+                           'timeNextSong' :printedtime ,
+                           'songsVoted' : cherrypy.session.get('songsVoted')
+                           })
+        
+    
+    
+    
+    
