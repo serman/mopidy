@@ -13,3 +13,4 @@ docs/_build/
 mopidy.log*
 node_modules/
 nosetests.xml
+.DS_Store
