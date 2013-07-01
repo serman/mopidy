@@ -1,12 +1,7 @@
 """Fake mixer for use in tests.
 
-**Dependencies:**
-
-- None
-
-**Settings:**
-
-- Set :attr:`mopidy.settings.MIXER` to ``fakemixer`` to use this mixer.
+Set the :confval:`audio/mixer:` config value to ``fakemixer`` to use this
+mixer.
 """
 
 from __future__ import unicode_literals
