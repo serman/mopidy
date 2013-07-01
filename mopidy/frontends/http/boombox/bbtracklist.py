@@ -5,12 +5,20 @@ import random
 from mopidy.audio import PlaybackState
 from mopidy.models import TlTrack
 from bbmodels import bbTrack
-
+import itunes
+if not itunes.is_caching_enabled():
+      itunes.enable_caching()
+import urllib
 from mopidy.core import listener
+import os
 import operator
 
 logger = logging.getLogger('mopidy.bb')
-
+from mopidy import settings
+if settings.HTTP_SERVER_STATIC_DIR:
+        cover_dir = settings.HTTP_SERVER_STATIC_DIR + "/tmp/"
+else:
+        cover_dir = os.path.join(os.path.dirname(__file__), 'data')
 
 class bbTracklistController(object):
     pykka_traversable = True
@@ -20,6 +28,7 @@ class bbTracklistController(object):
         self._next_tlid = 1
         self._bb_tracks = []
         self._version = 0
+        self._tl_length=0
         self.playingSong=None
 
 
@@ -79,12 +88,25 @@ class bbTracklistController(object):
         else:
             self._bb_tracks.append(iter_track)
         #self._core.tracklist.add(track)
-        logger.info('bb - Added Song')
+        
         if iter_track:
             #self._increase_version()
             pass
         self._next_tlid += 1
+        
         self.updateOrder()
+        
+        #logger.info(iter_track.track[0].artists)
+        for art in iter_track.track[0].artists:
+            break
+        try:
+            if art != None:
+                iter_track.cover_url = self.getCoverUrl(iter_track.track[0].album.name +" " + art.name )    
+            else:
+                iter_track.cover_url="default.jpg"
+        except NameError:
+            iter_track.cover_url="default.jpg"       
+        
         return iter_track
 
     def vote(self,bbTrack,nvotes):
@@ -95,6 +117,7 @@ class bbTracklistController(object):
         """
         bbTrack.votes+=nvotes
         self.updateOrder()
+        return bbTrack.votes
 
     def getTrackById(self,song_id):
         for song in self._bb_tracks:
@@ -211,7 +234,24 @@ class bbTracklistController(object):
         return matches
 
 
-#TODO
+    def getCoverUrl(self, album_title):
+        try:
+            album = itunes.search_album(album_title)[0]
+            aa=album.get_artwork()
+            bb=aa['100'].replace('100x100','225x225')
+            fname=bb[bb.rfind("/")+1:len(bb)]
+        except Exception:
+            #logger.info("NO COVER AVAILABLE")
+            return "default.jpg"            
+        if ( os.path.isfile(cover_dir+fname) ==False) :
+            urllib.urlretrieve (bb, cover_dir+fname)
+        return fname
+        
+        
+        pass
+    
+
+
 
     def getNextOne(self):
         if(self.get_length>0) :
@@ -230,7 +270,7 @@ class bbTracklistController(object):
             self._bb_tracks.sort( key=operator.attrgetter("votes"), reverse=True);
 
     def playNext(self):
-        logger.info("playback ended ----")
+        #logger.info("playback ended ----")
         if( self._core.tracklist.get_length().get() == 0 ): #Si no hay ninguna cancion en el TL "oficial" Esto va a pasar siempre por disenio
             nextbbSong=self.getNextOne()
 
@@ -245,6 +285,32 @@ class bbTracklistController(object):
                     self._core.playback.play().get()
                     ctrac =self._core.playback.get_current_track().get().length
                     #self._core.playback.seek(ctrac-15000).get()
+    
+    def isSongInTracklist(self, song_uri):
+        for song in self._bb_tracks:            
+            if song.track[0].uri == song_uri:
+                return song
+        return None
+    
+    def getTrackListLength(self):
+        tl_length=0;
+        for song in self._bb_tracks:
+            try:
+                tl_length += song.track[0].length
+            except TypeError:
+                tl_length += 120000           
+        
+        if tl_length==0:
+            tl_length=90000
+            
+        self._tl_length=tl_length
+        return self._tl_length
+    
+    def getFastTlLength(self):
+        return self._tl_length
+    
+    
+    
 
 
 

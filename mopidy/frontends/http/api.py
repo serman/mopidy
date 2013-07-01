@@ -8,6 +8,8 @@ from boombox import bbmodels
 from mopidy.audio import PlaybackState
 from boombox.bbconst import bbContext
 from boombox.secure import *
+import smtplib
+import os
 from mopidy.frontends.http.exceptions import (
  HttpNoExistError)
 try:
@@ -23,6 +25,10 @@ class ApiResource(object):
     def __init__(self, context):
         self.core = context.core
         self.bbTracklist = context.bbTracklist
+        #print(os.path.join(os.path.dirname(__file__), 'blacklistDB.txt'))
+        self.blackList= blackList(os.path.join(os.path.dirname(__file__), 'blacklistDB.txt'))
+        self.blackList.load()
+
        # self.player = PlayerResource(context.core)
        # self.playlists = PlaylistsResource(context.core)
 #        self.search = SearchResource(core)
@@ -50,6 +56,7 @@ class ApiResource(object):
             results = self.core.library.search( any=[search_for] ).get()
         elif(search_what=="artist"):
             results = self.core.library.search( artist=[search_for] ).get()
+            
         tracks = []
 #        logger.info(results)
         #for track in results.tracks:
@@ -75,15 +82,17 @@ class ApiResource(object):
 #Comprueba permisos y decrece el contador de canciones disponibles del usuario
     @cherrypy.tools.json_out()
     @cherrypy.expose
-    def addSong(self, jsonTrack="",name="",msg=""): #jsonTrack es la URI
-        logger.info( "name......." + name )
+    def addSong(self, jsonTrack,name="",msg=""): #jsonTrack es la URI
+        logger.info( "Addsong: " + jsonTrack + "by " + name )
         if(canIAddSong()==False):
             return json.dumps({'error': "TooManySongs"})
-        if(canAddThis()==False):
+        if(canAddThis(jsonTrack,self.bbTracklist)==False):
             return json.dumps({'error': "AlreadyThere"})
-            
+        
+        if(self.blackList.isOnBlacklist(jsonTrack)==True):
+            return json.dumps({'error': "blacklist"})
         if(jsonTrack==""):
-            logger.info( "no hay cancion")
+            logger.error( "AddsongErr no hay cancion")
             return json.dumps({'error': "NoSong"})
         else:
             mtrack = self.core.library.lookup(jsonTrack).get()
@@ -100,7 +109,7 @@ class ApiResource(object):
                 #     self.core.playback.play().get()
                 #     ctrac =self.core.playback.get_current_track().get().length
                 #     self.core.playback.seek(ctrac-15000).get()
-                songLeft=computeSongsLeft()
+                songLeft=computeSongsLeft(self.bbTracklist.getTrackListLength())
             else:
                 return json.dumps({'error': "NotFound"})
 
@@ -129,8 +138,12 @@ class ApiResource(object):
         if(canIVoteThis(song_id)==True):            
             votes=int(votes)
             bbTrack1=self.bbTracklist.getTrackById(song_id)
-            self.bbTracklist.vote(bbTrack1,votes)
+            votesLeft=self.bbTracklist.vote(bbTrack1,votes)
             cherrypy.session['songsVoted'].append(song_id)
+            if(votesLeft<=0):
+                logger.info("removesong borrando cancion: " + bbTrack1.track[0].uri)
+                self.blackList.addURI(bbTrack1.track[0].uri)
+                self.blackList.saveToFile();
             return json.dumps({'ok': song_id})    
         else:
             return json.dumps({'error': "You already voted this one"})    
@@ -140,6 +153,7 @@ class ApiResource(object):
     @cherrypy.tools.json_out()
     @cherrypy.expose
     def setUserName(self, userName):
+        print asfas
         cherrypy.session['user'] = userName
         return json.dumps({'user':userName})
     
@@ -151,25 +165,46 @@ class ApiResource(object):
         else:
             return json.dumps({'error':"forbidden"})
 
+
+
     @cherrypy.tools.json_out()
     @cherrypy.expose
     def getStatus(self):
-        updateCredits()
+        updateCredits( self.bbTracklist.getFastTlLength() )
+        
+        #DESCOMENTAR EN CASO DE ERROR CONTINUADO DE SESIONES
+        if(cherrypy.session.get('timeNextSong')==None):
+            return json.dumps({ 'user': "Error de sesion" ,
+                           'songsLeft':-1,
+                           'timeNextSong' :0 ,
+                           'songsVoted' : 1
+            })
+        
         if( cherrypy.session.get('timeNextSong')==0 ):
             printedtime=0
         else:
-            printedtime=str(round((cherrypy.session.get('timeNextSong')-datetime.datetime.now()).seconds/60))
+            printedtime = str(round((cherrypy.session.get('timeNextSong')-datetime.datetime.now()).seconds/60))
             
-        
-        
-        
         return json.dumps({'user':cherrypy.session.get('user'),
                            'songsLeft':cherrypy.session.get('songsLeft'),
                            'timeNextSong' :printedtime ,
                            'songsVoted' : cherrypy.session.get('songsVoted')
                            })
         
+    @cherrypy.expose
+    def default(self, attr='abc'):
+        raise cherrypy.HTTPRedirect("http://boombox.asociacion-semilla.org")
     
-    
+    @cherrypy.expose
+    def sendM(self, amsg , origin):
+        srv = smtplib.SMTP('tinkerista.com')
+        srv.login('infoboombox.tinkerista', 'echalesemilla')
+        srv.ehlo()
+        #srv.starttls()
+        #srv.ehlo
+        header = 'To:' + "sergio@tinkerista.com" + '\n' + 'From: ' + "infoboombox@tinkerista.com" + '\n' + 'Subject:testing \n'
+        msg = header + "msg from: " + str(origin) +"\n Contenido; \n" + str(amsg) + str(origin)
+        srv.sendmail("infoboombox@tinkerista.com", "sergio@tinkerista.com", msg)
+        srv.close()
     
     

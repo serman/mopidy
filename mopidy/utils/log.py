@@ -55,6 +55,6 @@ def setup_debug_logging_to_file():
     handler = logging.handlers.RotatingFileHandler(
         settings.DEBUG_LOG_FILENAME, maxBytes=10485760, backupCount=3)
     handler.setFormatter(formatter)
-    handler.setLevel(logging.DEBUG)
+    handler.setLevel(logging.INFO)
     root = logging.getLogger('')
     root.addHandler(handler)

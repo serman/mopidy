@@ -113,8 +113,8 @@ HTTP_SERVER_PORT = 6680
 #: Used by :mod:`mopidy.frontends.http`.
 #:
 #: Default: None
-HTTP_SERVER_STATIC_DIR = None
-
+HTTP_SERVER_STATIC_DIR  =  None
+HTTP_SERVER_COOKIES_DIR = None
 
 #: Which directory Mopidy's HTTP server should serve at /.
 #:

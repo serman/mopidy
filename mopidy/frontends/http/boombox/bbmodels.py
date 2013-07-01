@@ -39,6 +39,8 @@ class bbTrack():
     
     #: name of whom added the track
     user = None
+    
+    cover_url = None
 
     def __init__(self, mtrack , mid, mmsg="", mname="" ):
         self.track = mtrack
@@ -46,7 +48,7 @@ class bbTrack():
         self.user = mname
         self.msg = mmsg
         self.bbid = mid
-
+        self.cover_url=""
       
     def __iter__(self):
         return iter([self.bbid, self.track])
