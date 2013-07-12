@@ -53,9 +53,11 @@ class ApiResource(object):
     @cherrypy.expose
     def search(self,search_for,search_what=""):
         if(search_what==""):
-            results = self.core.library.search( any=[search_for] ).get()
+            results = self.core.library.search( {'any':[search_for] }).get()
+            logger.info("what")
         elif(search_what=="artist"):
             results = self.core.library.search( artist=[search_for] ).get()
+            logger.info("artist")
             
         tracks = []
 #        logger.info(results)

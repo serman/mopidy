@@ -6,7 +6,7 @@ import os
 
 import pykka
 
-from mopidy import exceptions, models, settings
+from mopidy import exceptions, models
 from mopidy.core import CoreListener
 from mopidy.audio import PlaybackState
 from threading import Timer
@@ -32,11 +32,12 @@ logger = logging.getLogger('mopidy.frontends.http')
 
 
 class HttpFrontend(pykka.ThreadingActor, CoreListener):
-    def __init__(self, core):
+    def __init__(self, config,core):
         super(HttpFrontend, self).__init__()
+        self.config=config
         self.core = core
         self._setup_server()
-        self._setup_websocket_plugin()
+        #self._setup_websocket_plugin()
         app = self._create_app()
         self._setup_logging(app)
         self.inetStatus=True;        
@@ -49,12 +50,11 @@ class HttpFrontend(pykka.ThreadingActor, CoreListener):
     def _setup_server(self):
         cherrypy.config.update({
             'engine.autoreload_on': False,
-            'server.socket_host': (
-                settings.HTTP_SERVER_HOSTNAME.encode('utf-8')),
-            'server.socket_port': settings.HTTP_SERVER_PORT,
+            'server.socket_host': self.config['http']['hostname'],
+            'server.socket_port': self.config['http']['port'],
             #'server.thread_pool_max' : 7,
             #'server.thread_pool' : 7,
-            'error_page.404': os.path.join(settings.HTTP_SERVER_STATIC_DIR, "404.html")
+            'error_page.404': os.path.join(self.config['http']['static_dir'], "404.html")
         })
 
     def _setup_websocket_plugin(self):
@@ -63,24 +63,25 @@ class HttpFrontend(pykka.ThreadingActor, CoreListener):
 
     def _create_app(self):
 
-        self.bbTracklist=bbTracklistController(self.core)
-        if settings.HTTP_SERVER_STATIC_DIR:
-            static_dir = settings.HTTP_SERVER_STATIC_DIR
+        self.bbTracklist=bbTracklistController(self.core,self.config)
+        if self.config['http']['static_dir']:
+            static_dir =  self.config['http']['static_dir']
         else:
             static_dir = os.path.join(os.path.dirname(__file__), 'data')
         logger.debug('HTTP server will serve "%s" at /', static_dir)
 
-        if settings.HTTP_SERVER_COOKIES_DIR:
-            cookies_dir = settings.HTTP_SERVER_COOKIES_DIR
+        if self.config['http']['cookies_dir']:
+            cookies_dir = self.config['http']['cookies_dir']
         else:
             cookies_dir = os.path.join(os.path.dirname(__file__), 'cookies')
 
 #http template dir
-        if settings.HTTP_SERVER_TEMPLATE_DIR:
-            template_dir = settings.HTTP_SERVER_TEMPLATE_DIR
+        if self.config['http']['template_dir']:
+            template_dir = self.config['http']['template_dir']
         else:
             template_dir = os.path.dirname(__file__) +"/templates"
         logger.debug(u'HTTP server will serve templates at "%s" ', template_dir)
+
         env = Environment(loader=FileSystemLoader(template_dir))
         root = RootResource(self.core,env,self)
         #root = RootResource()

@@ -15,21 +15,22 @@ import operator
 
 logger = logging.getLogger('mopidy.bb')
 from mopidy import settings
-if settings.HTTP_SERVER_STATIC_DIR:
-        cover_dir = settings.HTTP_SERVER_STATIC_DIR + "/tmp/"
-else:
-        cover_dir = os.path.join(os.path.dirname(__file__), 'data')
+cover_dir=""
 
 class bbTracklistController(object):
     pykka_traversable = True
 
-    def __init__(self, core):
+    def __init__(self, core,config):
         self._core = core
         self._next_tlid = 1
         self._bb_tracks = []
         self._version = 0
         self._tl_length=0
         self.playingSong=None
+        if config['http']['static_dir']:
+            cover_dir =  config['http']['static_dir']+ "/tmp/"
+        else:
+            cover_dir = os.path.join(os.path.dirname(__file__), 'data')
 
 
 

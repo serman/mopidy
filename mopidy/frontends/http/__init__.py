@@ -21,6 +21,8 @@ class Extension(ext.Extension):
         schema['hostname'] = config.Hostname()
         schema['port'] = config.Port()
         schema['static_dir'] = config.Path(optional=True)
+        schema['cookies_dir'] = config.Path(optional=True)
+        schema['template_dir'] = config.Path(optional=True)
         return schema
 
     def validate_environment(self):

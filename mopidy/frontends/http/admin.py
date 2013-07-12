@@ -65,7 +65,7 @@ class AdminResource(object):
                 #     self.core.playback.play().get()
                 #     ctrac =self.core.playback.get_current_track().get().length
                 #     self.core.playback.seek(ctrac-15000).get()
-                songLeft=computeSongsLeft()
+                songLeft=computeSongsLeft(self.bbTracklist.getTrackListLength())
             else:
                 return json.dumps({'error': "NotFound"})
 
